@@ -118,10 +118,13 @@
             mainControlOverlay.classList.add('expanded-view');
         }
     }
-    // Gán sự kiện cho overlay (Ví dụ: click để kéo lên/xuống)
+    
+    // --- BẮT ĐẦU SỬA LỖI ẨN NHANH ---
+
+    // 1. Chỉ cho phép TOGGLE khi click vào TITLE
     mainControlOverlay.addEventListener('click', (e) => {
-        // Chỉ toggle nếu click vào phần trên cùng (ví dụ: title) 
-        if (e.target.id === 'overlayTitle' || e.target === mainControlOverlay) { 
+        // Chỉ toggle nếu click vào TIÊU ĐỀ ('overlayTitle')
+        if (e.target.id === 'overlayTitle') { 
             if (mainControlOverlay.classList.contains('default-view')) {
                 toggleControlOverlay('expanded');
             } else {
@@ -129,6 +132,20 @@
             }
         }
     });
+
+    // 2. Thêm sự kiện click MAP để ẩn Overlay (Click Outside)
+    map.on('click', () => {
+        // Không ẩn nếu đang có cuốc xe mới hiển thị (để tránh làm mất card thông báo)
+        if (newRequestCard.style.display !== 'none') return; 
+        
+        // Ẩn Overlay nếu đang ở chế độ mở rộng
+        if (mainControlOverlay.classList.contains('expanded-view')) {
+            toggleControlOverlay('default');
+        }
+    });
+    
+    // --- KẾT THÚC SỬA LỖI ẨN NHANH ---
+
     toggleControlOverlay('expanded'); // Mặc định mở rộng để thấy nút Online
 
     // === HÀM PHÁT ÂM THANH VÀ RUNG ===
