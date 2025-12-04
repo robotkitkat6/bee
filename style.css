@@ -1,16 +1,147 @@
+/* style.css */
+:root {
+  --primary-color: #007bff; /* Blue */
+  --secondary-color: #6c757d; /* Gray */
+  --success-color: #28a745; /* Green */
+  --info-color: #17a2b8; /* Cyan for Complete */
+  --danger-color: #dc3545; /* Red */
+  --warning-color: #ffc107; /* Yellow for Driver Info */
+  --bg-color: #f8f9fa; /* Light Gray Background */
+  --card-bg: #ffffff; /* White Card Background */
+}
+
 body {
-font-family: Arial;
-padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  padding: 12px;
+  margin: 0;
+  background-color: var(--bg-color);
+  color: #343a40;
 }
 
+h2, h3 {
+  color: #343a40;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 5px;
+  margin-top: 20px;
+}
 
+/* Form elements */
+input, select {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  box-sizing: border-box;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  transition: border-color 0.3s;
+}
+
+input:focus, select:focus {
+  border-color: var(--primary-color);
+  outline: none;
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s, opacity 0.3s;
+  font-weight: bold;
+  text-align: center;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+.btn-primary:hover {
+  background-color: #0056b3;
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    color: white;
+}
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-accept { /* For driver.html */
+  background-color: var(--success-color);
+  color: white;
+  flex: 1; /* Make it stretch */
+}
+.btn-accept:hover {
+  background-color: #1e7e34;
+}
+
+.btn-complete { /* For driver.html */
+  background-color: var(--info-color); 
+  color: white;
+  margin-left: 8px;
+}
+.btn-complete:hover {
+  background-color: #117a8b;
+}
+
+.btn-disabled, button:disabled {
+  background-color: #e9ecef !important;
+  color: #adb5bd !important;
+  cursor: not-allowed !important;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+.col {
+  flex: 1;
+}
+
+/* Map */
 #map {
-height: 400px;
-margin-top: 10px;
+  height: 400px; /* Điều chỉnh chiều cao cho phù hợp */
+  margin-top: 15px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+/* Info/Result */
+#info, #result {
+  margin-top: 15px;
+  padding: 15px;
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  border: 1px solid #ddd;
+}
+#info b, #result b {
+  color: var(--primary-color);
+}
 
-input, select, button {
-margin: 5px;
-padding: 6px;
+/* Driver Specific */
+#driverInfo {
+  margin: 8px 0;
+  padding: 8px;
+  background-color: #ffeeba; /* Yellow tint */
+  border: 1px solid var(--warning-color);
+  color: #856404;
+  border-radius: 4px;
+}
+
+.request {
+  border: 1px solid #ced4da;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 6px;
+  background-color: var(--card-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.request b {
+  font-weight: 600;
+}
+.request button {
+  margin-top: 10px;
 }
