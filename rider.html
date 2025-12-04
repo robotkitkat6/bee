@@ -5,7 +5,9 @@
   <title>Rider — Đặt xe</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="style.css" /> <style>
+  <link rel="stylesheet" href="style.css" /> 
+  <style>
+    /* CSS cho icon tài xế và Toast */
     .driver-icon {
       background-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="#dc3545" d="M16 0C9.92 0 4.98 4.79 5.04 10.74c.06 5.86 4.98 10.74 10.96 10.74s10.9-4.88 10.96-10.74C27.02 4.79 22.08 0 16 0zm0 14a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/><path fill="#dc3545" d="M15.5 22.06c-5.5.06-9.94 4.56-9.94 10a10.02 10.02 0 0 0 19.88 0c0-5.44-4.44-9.94-9.94-10z"/></svg>');
       background-size: cover;
@@ -15,50 +17,57 @@
       border: 2px solid white;
       box-shadow: 0 2px 4px rgba(0,0,0,0.4);
     }
-    /* Đảm bảo style.css có các class cần thiết cho UI */
   </style>
 </head>
 <body>
-  <h2>Đặt xe — Nhập địa chỉ</h2>
+  <div class="map-page-container">
+    <div id="map"></div>
 
-  <label>Điểm đón 
-    <button id="currentLocationBtn" class="current-location-btn">
-      [Vị trí hiện tại]
-    </button>
-  </label>
-  <div class="input-container">
-    <input id="from" placeholder="Ví dụ: 1 Phố A, Quận B" />
-    <ul id="fromList" class="autocomplete-list" style="display:none;"></ul>
+    <div id="controlsOverlay" class="overlay-card">
+        <h2 style="margin: 0 0 10px 0; font-size: 1.2em; padding: 0; border: none;">Nhập điểm đón/đến</h2>
+        
+        <label>Điểm đón 
+            <button id="currentLocationBtn" class="current-location-btn">
+              [Vị trí hiện tại]
+            </button>
+        </label>
+        <div class="input-container">
+            <input id="from" placeholder="Ví dụ: 1 Phố A, Quận B" />
+            <ul id="fromList" class="autocomplete-list" style="display:none;"></ul>
+        </div>
+
+        <label>Điểm đến</label>
+        <div class="input-container">
+            <input id="to" placeholder="Ví dụ: 2 Phố X, Quận Y" />
+            <ul id="toList" class="autocomplete-list" style="display:none;"></ul>
+        </div>
+
+        <label>Chọn loại xe</label>
+        <select id="vehicle">
+            <option value="bike">Xe máy</option>
+            <option value="car">Ô tô</option>
+        </select>
+
+        <div id="info" style="margin: 10px 0; font-size: 0.95em;"></div>
+
+        <div class="row">
+            <button id="estimateBtn" class="col btn btn-primary">Ước tính & Hiển thị tuyến</button>
+            <button id="requestBtn" class="col btn btn-success" disabled>GỌI XE</button>
+        </div>
+        <button id="cancelBtn" class="col btn btn-danger" style="display:none; margin-top: 5px;" disabled>HỦY CHUYẾN</button>
+    </div>
+
+    <div id="toast-message" style="display:none;"></div>
   </div>
-
-  <label>Điểm đến</label>
-  <div class="input-container">
-    <input id="to" placeholder="Ví dụ: 2 Phố X, Quận Y" />
-    <ul id="toList" class="autocomplete-list" style="display:none;"></ul>
-  </div>
-  <label>Chọn loại xe</label>
-  <select id="vehicle">
-    <option value="bike">Xe máy</option>
-    <option value="car">Ô tô</option>
-  </select>
-
-  <div class="row">
-    <button id="estimateBtn" class="col btn btn-primary">Ước tính & Hiển thị tuyến</button>
-    <button id="requestBtn" class="col btn btn-secondary" disabled>Gọi xe (lưu)</button>
-    <button id="cancelBtn" class="col btn btn-danger" style="display:none;" disabled>Hủy chuyến</button>
-  </div>
-
-  <div id="info"></div>
-  <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, push, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, push, ref, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // Cấu hình Firebase (Đã đồng bộ)
+    // Cấu hình Firebase (Giữ nguyên)
     const firebaseConfig = {
       apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
       authDomain: "robotkitkat6-bee.firebaseapp.com",
@@ -84,20 +93,13 @@
     let currentRideId = null; 
 
     const infoDiv = document.getElementById('info');
-    const estimateBtn = document.getElementById('estimateBtn');
     const requestBtn = document.getElementById('requestBtn');
     const cancelBtn = document.getElementById('cancelBtn');
-    const fromInput = document.getElementById('from');
-    const toInput = document.getElementById('to');
-    const currentLocationBtn = document.getElementById('currentLocationBtn');
-    const fromList = document.getElementById('fromList');
-    const toList = document.getElementById('toList');
+    const toastDiv = document.getElementById('toast-message');
     
-    // Lưu tạm thời tọa độ của gợi ý đã chọn
     let selectedFromCoord = null;
     let selectedToCoord = null;
 
-    // Driver Marker Layer
     const driverMarkers = {};
     const driverIcon = L.divIcon({
         className: 'driver-icon',
@@ -106,15 +108,26 @@
         popupAnchor: [0, -15]
     });
 
-
-    // Pricing
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
-    
-    // ==========================================================
-    // === CHỨC NĂNG 1: GEOLOCATION VÀ REVERSE GEOCODE ===
-    // ==========================================================
 
-    // Reverse Geocode (từ tọa độ ra tên địa điểm)
+    // === HÀM TOAST ===
+    function showToast(message, duration = 3000) {
+        toastDiv.textContent = message;
+        toastDiv.style.display = 'block';
+        setTimeout(() => {
+            toastDiv.classList.add('show');
+        }, 10); // Đảm bảo chuyển động
+        
+        setTimeout(() => {
+            toastDiv.classList.remove('show');
+            setTimeout(() => {
+                toastDiv.style.display = 'none';
+            }, 500);
+        }, duration);
+    }
+    // ==================
+
+    // ... (Giữ nguyên logic Geolocation, ReverseGeocode, Autosuggest, DriverListener) ...
     async function reverseGeocode(lat, lng) {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=vi`;
         const res = await fetch(url);
@@ -128,44 +141,34 @@
         }
         throw new Error('Không tìm thấy địa chỉ cho tọa độ này.');
     }
-
-    currentLocationBtn.addEventListener('click', () => {
+    document.getElementById('currentLocationBtn').addEventListener('click', () => {
         infoDiv.innerHTML = 'Đang tìm vị trí hiện tại...';
-        currentLocationBtn.disabled = true;
-
+        document.getElementById('currentLocationBtn').disabled = true;
         if (!navigator.geolocation) {
             alert('Trình duyệt của bạn không hỗ trợ Định vị.');
-            currentLocationBtn.disabled = false;
+            document.getElementById('currentLocationBtn').disabled = false;
             infoDiv.innerHTML = '';
             return;
         }
-
         navigator.geolocation.getCurrentPosition(async (position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
-            
             try {
                 const result = await reverseGeocode(lat, lng);
-                fromInput.value = result.display;
-                selectedFromCoord = { lat, lng }; // Lưu tọa độ đã định vị
-                infoDiv.innerHTML = `<div>Đã lấy vị trí hiện tại: ${result.display}</div>`;
+                document.getElementById('from').value = result.display;
+                selectedFromCoord = { lat, lng };
+                infoDiv.innerHTML = `<div>Đã lấy vị trí hiện tại: ${result.display.split(',').slice(0, 3).join(',')}</div>`;
             } catch(e) {
                  infoDiv.innerHTML = `<div>Lỗi lấy địa chỉ: ${e.message}</div>`;
             } finally {
-                currentLocationBtn.disabled = false;
+                document.getElementById('currentLocationBtn').disabled = false;
             }
         }, (error) => {
             infoDiv.innerHTML = `<div>Lỗi Định vị: ${error.message}</div>`;
-            currentLocationBtn.disabled = false;
+            document.getElementById('currentLocationBtn').disabled = false;
         }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
     });
 
-
-    // ==========================================================
-    // === CHỨC NĂNG 2: GEOLOCATION AUTOSUGGEST ===
-    // ==========================================================
-
-    // Debounce function để tránh gọi API quá nhiều lần
     const debounce = (func, delay) => {
         let timeoutId;
         return function(...args) {
@@ -173,8 +176,6 @@
             timeoutId = setTimeout(() => func.apply(this, args), delay);
         };
     };
-
-    // Geocode via Nominatim
     async function geocode(q) {
       const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=10&accept-language=vi';
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
@@ -182,33 +183,19 @@
       if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
       return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
     }
-    
-    // Hàm tìm kiếm và hiển thị gợi ý
     async function fetchSuggestions(query, targetList, targetInput) {
-        if (query.length < 3) {
-            targetList.style.display = 'none';
-            return;
-        }
-
+        if (query.length < 3) { targetList.style.display = 'none'; return; }
         try {
             const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=vn&accept-language=vi`;
             const res = await fetch(url);
             const data = await res.json();
-            
             targetList.innerHTML = '';
-            
-            if (data.length === 0) {
-                 targetList.style.display = 'none';
-                 return;
-            }
-
+            if (data.length === 0) { targetList.style.display = 'none'; return; }
             data.forEach(item => {
                 const li = document.createElement('li');
                 li.textContent = item.display_name;
                 li.dataset.lat = item.lat;
                 li.dataset.lng = item.lon;
-                
-                // Gắn sự kiện click
                 li.addEventListener('click', () => {
                     targetInput.value = item.display_name;
                     if (targetInput.id === 'from') {
@@ -217,75 +204,46 @@
                         selectedToCoord = { lat: parseFloat(item.lat), lng: parseFloat(item.lon) };
                     }
                     targetList.style.display = 'none';
-                    // Tự động gọi Estimate nếu cả 2 đã có địa chỉ
-                    if (selectedFromCoord && selectedToCoord) {
-                        estimateBtn.click();
-                    }
+                    if (selectedFromCoord && selectedToCoord) { document.getElementById('estimateBtn').click(); }
                 });
                 targetList.appendChild(li);
             });
             targetList.style.display = 'block';
-
         } catch (error) {
-            console.error('Lỗi gợi ý địa chỉ:', error);
             targetList.style.display = 'none';
         }
     }
+    const debouncedFromSuggest = debounce((query) => fetchSuggestions(query, document.getElementById('fromList'), document.getElementById('from')), 400);
+    const debouncedToSuggest = debounce((query) => fetchSuggestions(query, document.getElementById('toList'), document.getElementById('to')), 400);
 
-    // Thiết lập Debounce cho cả 2 ô input
-    const debouncedFromSuggest = debounce((query) => fetchSuggestions(query, fromList, fromInput), 400);
-    const debouncedToSuggest = debounce((query) => fetchSuggestions(query, toList, toInput), 400);
-
-    fromInput.addEventListener('input', (e) => {
-        selectedFromCoord = null; // Xóa tọa độ đã chọn khi gõ lại
-        debouncedFromSuggest(e.target.value.trim());
-    });
-    toInput.addEventListener('input', (e) => {
-        selectedToCoord = null; // Xóa tọa độ đã chọn khi gõ lại
-        debouncedToSuggest(e.target.value.trim());
-    });
-
-    // Ẩn danh sách gợi ý khi click ra ngoài
+    document.getElementById('from').addEventListener('input', (e) => { selectedFromCoord = null; debouncedFromSuggest(e.target.value.trim()); });
+    document.getElementById('to').addEventListener('input', (e) => { selectedToCoord = null; debouncedToSuggest(e.target.value.trim()); });
     document.addEventListener('click', (e) => {
-        if (!fromInput.parentElement.contains(e.target)) fromList.style.display = 'none';
-        if (!toInput.parentElement.contains(e.target)) toList.style.display = 'none';
+        if (!document.getElementById('from').parentElement.contains(e.target)) document.getElementById('fromList').style.display = 'none';
+        if (!document.getElementById('to').parentElement.contains(e.target)) document.getElementById('toList').style.display = 'none';
     });
-
-
-    // ==========================================================
-    // === CHỨC NĂNG 3: HIỂN THỊ TÀI XẾ XUNG QUANH ===
-    // ==========================================================
     
     function initDriverListener() {
         const driversRef = ref(db, 'drivers');
-
         onValue(driversRef, (snapshot) => {
             const drivers = snapshot.val() || {};
             const activeDriverIds = new Set();
-            
-            // Cập nhật/Thêm marker cho tài xế đang online
             Object.keys(drivers).forEach(driverId => {
                 const d = drivers[driverId];
                 activeDriverIds.add(driverId);
-                
                 if (d.online && d.lat && d.lng) {
                     const latLng = [d.lat, d.lng];
                     const name = d.name || 'Tài xế ẩn danh';
-                    
                     if (driverMarkers[driverId]) {
-                        // Di chuyển marker nếu đã tồn tại
                         driverMarkers[driverId].setLatLng(latLng);
                         driverMarkers[driverId].setPopupContent(`<b>${name}</b> đang Online`);
                     } else {
-                        // Tạo marker mới
                         const marker = L.marker(latLng, { icon: driverIcon }).addTo(map);
                         marker.bindPopup(`<b>${name}</b> đang Online`);
                         driverMarkers[driverId] = marker;
                     }
                 }
             });
-
-            // Xóa marker của tài xế đã offline
             Object.keys(driverMarkers).forEach(driverId => {
                 if (!activeDriverIds.has(driverId)) {
                     map.removeLayer(driverMarkers[driverId]);
@@ -294,16 +252,10 @@
             });
         });
     }
-
-    // Gọi hàm khởi tạo lắng nghe tài xế ngay khi script chạy
     initDriverListener();
-
-
     // ==========================================================
-    // === LOGIC CHÍNH (ĐẶT VÀ HỦY CHUYẾN) ===
-    // ==========================================================
-
-    // Estimate route using Leaflet Routing Machine
+    
+    // ... (Giữ nguyên showRoute, displayInfo) ...
     function showRoute(fromCoords, toCoords) {
       if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
       routingControl = L.Routing.control({
@@ -315,7 +267,8 @@
         addWaypoints: false,
         draggableWaypoints: false,
         fitSelectedRoutes: true,
-        showAlternatives: false
+        showAlternatives: false,
+        lineOptions: { styles: [{ color: '#007bff', weight: 6, opacity: 0.7 }] } 
       }).addTo(map);
 
       routingControl.on('routesfound', function(e) {
@@ -323,7 +276,6 @@
         lastRouteSummary = { distance: route.summary.totalDistance, duration: route.summary.totalTime };
         displayInfo();
         requestBtn.disabled = false;
-        // Cập nhật lastFromCoords và lastToCoords bằng tọa độ thực của tuyến đường
         lastFromCoords = { lat: e.routes[0].waypoints[0].latLng.lat, lng: e.routes[0].waypoints[0].latLng.lng };
         lastToCoords = { lat: e.routes[0].waypoints[1].latLng.lat, lng: e.routes[0].waypoints[1].latLng.lng };
       });
@@ -331,12 +283,11 @@
       routingControl.on('routingerror', function(e) {
          lastRouteSummary = null;
          requestBtn.disabled = true;
-         infoDiv.innerHTML = `<div><b>Lỗi:</b> Không tìm thấy tuyến đường.</div>`;
+         infoDiv.innerHTML = `<div style="color:var(--danger-color);"><b>Lỗi:</b> Không tìm thấy tuyến đường.</div>`;
       });
     }
 
     function displayInfo() {
-      // Logic tính giá tiền giữ nguyên...
       if (!lastRouteSummary) return;
       const km = (lastRouteSummary.distance / 1000);
       const mins = Math.round(lastRouteSummary.duration / 60);
@@ -348,22 +299,24 @@
         priceCalc = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
       }
       infoDiv.innerHTML = `
-        <div><b>Khoảng cách:</b> ${km.toFixed(2)} km</div>
-        <div><b>Thời gian dự kiến:</b> ${mins} phút</div>
-        <div><b>Loại xe:</b> ${vehicle === 'bike' ? 'Xe máy' : 'Ô tô'}</div>
-        <div><b>Giá ước tính:</b> ${priceCalc.toLocaleString()} đ</div>
+        <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+            <div><b>Quãng đường:</b> ${km.toFixed(2)} km</div>
+            <div><b>Thời gian:</b> ${mins} phút</div>
+            <div><b>Loại xe:</b> ${vehicle === 'bike' ? 'Xe máy' : 'Ô tô'}</div>
+            <div style="font-size: 1.1em; color: var(--success-color);"><b>Giá ước tính:</b> ${priceCalc.toLocaleString()} đ</div>
+        </div>
       `;
     }
     
+    // SỬA: Cập nhật hàm lắng nghe để dùng Toast
     function listenForAcceptance(rideId) {
-        // Logic lắng nghe trạng thái giữ nguyên...
         const rideRef = ref(db, 'rides/' + rideId);
         onValue(rideRef, (snap) => {
             const ride = snap.val();
             
             if (!ride) {
                  if (currentRideId === rideId) {
-                     infoDiv.innerHTML = `<div style="color:var(--secondary-color); font-weight: bold; margin-top: 10px;">Cuốc xe đã kết thúc/bị hủy.</div>`;
+                     showToast('Cuốc xe đã kết thúc hoặc bị hủy.', 5000);
                      cancelBtn.style.display = 'none';
                      requestBtn.disabled = false;
                      currentRideId = null;
@@ -374,48 +327,40 @@
             const driverName = ride.driverName || 'Tài xế';
 
             if (ride.status === 'accepted') {
-                infoDiv.innerHTML = `
-                    <div style="color:var(--primary-color); font-weight: bold; font-size: 1.2em;">✅ TÀI XẾ ĐÃ NHẬN CUỐC!</div>
-                    <div>Tài xế <b>${driverName}</b> đang đến đón bạn.</div>
-                `;
+                showToast(`✅ Tài xế ${driverName} đã nhận cuốc! Đang đến đón bạn.`, 8000);
+                infoDiv.innerHTML = `<div style="color:var(--primary-color);">Tài xế <b>${driverName}</b> đang đến đón bạn.</div>`;
             } else if (ride.status === 'onTrip') {
-                infoDiv.innerHTML = `
-                    <div style="color:var(--success-color); font-weight: bold; font-size: 1.2em;">🚗 BẮT ĐẦU HÀNH TRÌNH!</div>
-                    <div>Bạn đang trên đường đến điểm đến cùng tài xế <b>${driverName}</b>.</div>
-                `;
+                showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName}!`, 8000);
+                infoDiv.innerHTML = `<div style="color:var(--success-color);">Bạn đang trên đường đến điểm đến.</div>`;
             } else if (ride.status === 'finding') {
-                if (!infoDiv.innerHTML.includes('Đang tìm tài xế')) {
-                    infoDiv.innerHTML += `<div style="color:var(--success-color); margin-top: 10px;">Yêu cầu đã gửi (ID: ${rideId}). Đang tìm tài xế...</div>`;
-                }
+                showToast('🔍 Đang tìm tài xế gần bạn...');
+                infoDiv.innerHTML = `<div style="color:var(--secondary-color);">Yêu cầu đã gửi (ID: ${rideId.slice(-4)}). Đang tìm tài xế...</div>`;
             }
             
             if (ride.status !== 'completed' && ride.status !== 'canceled') {
-                cancelBtn.style.display = 'inline-block';
+                cancelBtn.style.display = 'block';
                 cancelBtn.disabled = false;
             }
 
         });
     }
 
-    // Button: Estimate (Đã sửa để dùng tọa độ từ Autocomplete/Current Location)
-    estimateBtn.addEventListener('click', async () => {
-      const from = fromInput.value.trim();
-      const to = toInput.value.trim();
+    document.getElementById('estimateBtn').addEventListener('click', async () => {
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
       if (!from || !to) return alert('Nhập điểm đón và điểm đến');
       
       try {
-        estimateBtn.disabled = true;
+        document.getElementById('estimateBtn').disabled = true;
         requestBtn.disabled = true;
-        infoDiv.innerHTML = 'Đang tìm địa chỉ...';
+        infoDiv.innerHTML = '<div style="color:var(--secondary-color);">Đang tìm địa chỉ...</div>';
         cancelBtn.style.display = 'none';
 
         let fromCoords, toCoords;
 
-        // Ưu tiên dùng tọa độ đã chọn từ Current Location hoặc Autocomplete
         if (selectedFromCoord) {
             fromCoords = selectedFromCoord;
         } else {
-             // Fallback: Geocode lần cuối nếu người dùng chỉ gõ mà chưa click suggest
              fromCoords = await geocode(from);
         }
         
@@ -426,7 +371,6 @@
         }
 
         showRoute(fromCoords, toCoords);
-        // lastFromCoords, lastToCoords sẽ được cập nhật trong showRoute.on('routesfound')
 
       } catch (e) {
         alert(e.message || 'Lỗi khi geocode/tìm tuyến đường');
@@ -435,7 +379,7 @@
         lastFromCoords = null;
         lastToCoords = null;
       } finally {
-        estimateBtn.disabled = false;
+        document.getElementById('estimateBtn').disabled = false;
       }
     });
 
@@ -445,12 +389,11 @@
         return alert('Vui lòng nhấn "Ước tính & Hiển thị tuyến" trước và đảm bảo tìm thấy tuyến đường.');
       }
       
-      const from = fromInput.value.trim();
-      const to = toInput.value.trim();
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
       const vehicle = document.getElementById('vehicle').value;
       const km = lastRouteSummary.distance / 1000;
-      const mins = Math.round(lastRouteSummary.duration / 60);
-
+      
       let fare = 0;
       if (vehicle === 'bike') fare = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
       else fare = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
@@ -460,12 +403,10 @@
         status: 'finding',
         fromText: from,
         toText: to,
-        from: lastFromCoords, // Dùng tọa độ đã được Routing Machine xác nhận
+        from: lastFromCoords, 
         to: lastToCoords, 
         distance_m: lastRouteSummary.distance,
         duration_s: lastRouteSummary.duration,
-        distance_km: km,
-        duration_min: mins,
         fare: fare,
         vehicle: vehicle
       };
@@ -479,20 +420,21 @@
         listenForAcceptance(rideId);
         
         requestBtn.disabled = true;
+        showToast('✅ Yêu cầu đã gửi. Đang tìm tài xế...');
 
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
       }
     });
 
-    // NÚT HỦY CHUYẾN (Giữ nguyên logic)
+    // NÚT HỦY CHUYẾN
     cancelBtn.addEventListener('click', async () => {
         if (!currentRideId) return;
 
-        const isAccepted = infoDiv.innerHTML.includes('TÀI XẾ ĐÃ NHẬN CUỐC') || infoDiv.innerHTML.includes('BẮT ĐẦU HÀNH TRÌNH');
+        const isAccepted = infoDiv.innerHTML.includes('Tài xế') || infoDiv.innerHTML.includes('Bắt đầu hành trình');
         let confirmationMsg = "Bạn chắc chắn muốn hủy chuyến này?";
         if (isAccepted) {
-            confirmationMsg = "Tài xế đã nhận cuốc/đã đón khách. Việc hủy có thể bị tính phí. Bạn chắc chắn muốn hủy?";
+            confirmationMsg = "Tài xế đã nhận cuốc. Bạn chắc chắn muốn hủy?";
         }
 
         if (!confirm(confirmationMsg)) return;
@@ -501,12 +443,12 @@
             const rideRef = ref(db, 'rides/' + currentRideId);
             await remove(rideRef); 
 
-            infoDiv.innerHTML = '<div style="color:var(--danger-color); font-weight: bold; margin-top: 10px;">❌ ĐÃ HỦY CHUYẾN.</div>';
+            showToast('❌ Đã hủy chuyến thành công.', 5000);
             
-            // Reset UI
             currentRideId = null;
             requestBtn.disabled = false;
             cancelBtn.style.display = 'none';
+            infoDiv.innerHTML = '';
             
             if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
 
