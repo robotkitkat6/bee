@@ -2,601 +2,635 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <title>Driver — Nhận cuốc</title>
+  <title>Rider — Đặt xe</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="style.css" /> 
+  <style>
+    /* Biến màu */
+    :root {
+        --primary-color: #007bff; /* Blue */
+        --success-color: #28a745; /* Green */
+        --danger-color: #dc3545; /* Red */
+    }
+
+    body{
+        font-family:Arial;
+        margin:0;
+        padding:12px;
+        /* Thêm padding dưới để tránh nội dung bị che bởi Overlay */
+        padding-bottom: 120px; 
+    }
+    #map{
+        height:50vh;
+        margin-top:8px;
+    }
+    input, select, button{
+        padding:8px;
+        margin:6px 0;
+        width:100%;
+        box-sizing:border-box;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+    }
+    button {
+        cursor: pointer;
+        font-weight: bold;
+    }
+    #estimateBtn { background-color: #f8f9fa; }
+    #requestBtn { background-color: var(--primary-color); color: white; }
+    
+    .row{display:flex;gap:8px}
+    .col{flex:1}
+
+    /* === 1. Bảng Điều khiển Trạng thái Cuốc xe (Overlay) === */
+    #rideStatusOverlay {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-height: 90vh;
+        background-color: white;
+        border-top-left-radius: 15px;
+        border-top-right-radius: 15px;
+        box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.2);
+        padding: 15px;
+        transition: transform 0.3s ease-out;
+        z-index: 500;
+        overflow-y: auto;
+        box-sizing: border-box;
+        display: none; /* Mặc định ẩn */
+    }
+
+    /* Chế độ thu nhỏ */
+    #rideStatusOverlay.default-view {
+        /* Hiện khoảng 120px từ dưới lên */
+        transform: translateY(calc(100% - 120px)); 
+    }
+    /* Chế độ mở rộng */
+    #rideStatusOverlay.expanded-view {
+        transform: translateY(0);
+    }
+    /* Các style phụ cho Overlay */
+    #statusTitle {
+        font-weight: bold;
+        color: var(--primary-color);
+        text-align: center;
+        margin-bottom: 10px;
+        cursor: pointer; /* Cho phép click để mở rộng/thu nhỏ */
+    }
+    .status-finding { color: orange; }
+    .status-accepted { color: var(--success-color); }
+    .status-completed { color: #333; }
+    .status-canceled { color: var(--danger-color); }
+
+    /* === 2. Style cho Suggestion List (Autocomplete) === */
+    .suggestions-container {
+        position: relative;
+    }
+    .suggestions-list {
+        position: absolute;
+        top: 100%; /* Đặt ngay dưới input */
+        left: 0;
+        width: 100%;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        border-top: none;
+        background-color: white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+    }
+    .suggestion-item {
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+        font-size: 0.9em;
+    }
+    .suggestion-item:hover {
+        background-color: #f0f0f0;
+    }
+  </style>
 </head>
 <body>
-  <div class="map-page-container">
-    <div id="map"></div>
-    
-    <div id="topStatus">
-        Chưa Online
-    </div>
-    
-    <div id="newRequestCard">
-        </div>
+  <h2>Đặt xe — Nhập địa chỉ</h2>
 
-    <div id="mainControlOverlay" class="default-view">
-        
-        <div style="text-align: center; margin-bottom: 10px;">
-            <div id="overlayTitle" style="font-weight: bold; color: var(--primary-color);">Bảng Điều Khiển</div>
-        </div>
+  <label>Điểm đón</label>
+  <div class="suggestions-container">
+    <input id="from" placeholder="Ví dụ: 1 Phố A, Quận B" />
+    <div id="fromSuggestions" class="suggestions-list"></div> </div>
 
-        <div id="offlineOnlineControls">
-            <h2>Thiết lập Tài xế</h2>
-            <div id="driverNameInput">
-                <label>Tên & Biển số xe</label>
-                <input id="driverName" placeholder="Ví dụ: Nam Hải - 29L1-33254"/>
-            </div>
-            <div class="row">
-                <button id="goOnline" class="btn btn-success col">BẬT ONLINE</button>
-                <button id="goOffline" class="btn btn-danger col" style="display:none;">TẮT ONLINE</button>
-            </div>
-        </div>
+  <label>Điểm đến</label>
+  <div class="suggestions-container">
+    <input id="to" placeholder="Ví dụ: 2 Phố X, Quận Y" />
+    <div id="toSuggestions" class="suggestions-list"></div> </div>
 
-        <div id="activeRideContent" style="display:none; margin-top: 15px;">
-            <h2 id="rideStatusTitle">Cuốc xe đang chờ đón</h2>
-            <div id="rideDetails">
-                </div>
-            <div id="activeRideActions" class="row">
-                </div>
-            <div class="row">
-                 <button id="cancelActiveRideBtn" class="btn btn-danger col">HỦY CUỐC</button>
-            </div>
-        </div>
-    </div>
+  <label>Chọn loại xe</label>
+  <select id="vehicle">
+    <option value="bike">Xe máy</option>
+    <option value="car">Ô tô</option>
+  </select>
+
+  <div class="row">
+    <button id="estimateBtn" class="col">Ước tính & Hiển thị tuyến</button>
+    <button id="requestBtn" class="col" disabled>Gọi xe (lưu)</button>
+  </div>
+
+  <div id="info"></div>
+  <div id="map"></div>
+
+  <div id="rideStatusOverlay">
+      <div id="statusTitle">TRẠNG THÁI CUỐC XE</div>
+      <div id="rideStatusContent">
+          </div>
+      <div style="margin-top: 15px;">
+          <button id="cancelRideBtn" style="background-color: var(--danger-color); color: white; display: none;">
+              HỦY CUỐC XE
+          </button>
+      </div>
   </div>
 
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/leaflet-markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getDatabase, ref, set, remove, onChildAdded, onChildChanged, onChildRemoved,
-      onValue, update, push
+    import { 
+        getDatabase, push, ref, onValue, remove, update
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // Cấu hình Firebase (Giữ nguyên)
+    // ====== Cấu hình Firebase ======
     const firebaseConfig = {
       apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
       authDomain: "robotkitkat6-bee.firebaseapp.com",
       databaseURL: "https://robotkitkat6-bee-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "robotkitkat6-bee",
-      storageBucket: "robotkitkat6-bee.firebasestorage.app",
+      storageBucket: "robotkitkat6-bee.firebase-storage.app",
       messagingSenderId: "117130770804",
       appId: "1:117130770804:web:4827cc61a7c9df99549421",
       measurementId: "G-WMKP4GT930"
     };
+    // =============================================
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Map init (Giữ nguyên)
+    // Map init
     const map = L.map('map').setView([10.762622, 106.660172], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    let driverMarker = L.marker([10.762622, 106.660172], { draggable:true }).addTo(map);
-    driverMarker.bindPopup('Bạn (tài xế)').openPopup();
+    let routingControl = null;
+    let lastRouteSummary = null; // {distance (m), duration (s)}
+    let currentRideId = null;
+    let driverMarker = null;
 
-    const DRIVER_ID_KEY = 'driverUniqueId';
-    let DRIVER_ID = localStorage.getItem(DRIVER_ID_KEY);
-    if (!DRIVER_ID) {
-      DRIVER_ID = 'driver_' + Date.now() + '_' + Math.floor(Math.random()*9999);
-      localStorage.setItem(DRIVER_ID_KEY, DRIVER_ID);
-    }
-    
-    let lastPos = null;
-    let online = false;
-    let watchId = null;
+    // Biến mới cho vị trí người đặt xe
+    let riderCurrentMarker = null;
+    let riderCurrentPos = null; // {lat, lng, display}
 
     // Elements
-    const topStatus = document.getElementById('topStatus');
-    const mainControlOverlay = document.getElementById('mainControlOverlay');
-    const offlineOnlineControls = document.getElementById('offlineOnlineControls');
-    const activeRideContent = document.getElementById('activeRideContent');
-    const newRequestCard = document.getElementById('newRequestCard');
-    const goOnlineBtn = document.getElementById('goOnline');
-    const goOfflineBtn = document.getElementById('goOffline');
-    const driverNameInput = document.getElementById('driverName');
+    const infoDiv = document.getElementById('info');
+    const estimateBtn = document.getElementById('estimateBtn');
+    const requestBtn = document.getElementById('requestBtn');
+    const rideStatusOverlay = document.getElementById('rideStatusOverlay');
+    const statusTitle = document.getElementById('statusTitle');
+    const rideStatusContent = document.getElementById('rideStatusContent');
+    const cancelRideBtn = document.getElementById('cancelRideBtn');
 
-    let shownRides = {}; // Chỉ theo dõi một cuốc xe đang hoạt động/đang chờ chấp nhận
-
-    const STORAGE_KEY_STATUS = 'driverOnlineStatus';
-    const STORAGE_KEY_NAME = 'driverName';
+    const fromInput = document.getElementById('from');
+    const toInput = document.getElementById('to');
+    const fromSuggestions = document.getElementById('fromSuggestions');
+    const toSuggestions = document.getElementById('toSuggestions');
     
+    // Pricing
+    const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
+
     // Hàm Utility: Hiển thị/Ẩn Control Overlay
     function toggleControlOverlay(state = 'default') {
-        mainControlOverlay.classList.remove('default-view', 'expanded-view');
+        rideStatusOverlay.classList.remove('default-view', 'expanded-view');
         if (state === 'default') {
-            mainControlOverlay.classList.add('default-view');
+            rideStatusOverlay.classList.add('default-view');
         } else if (state === 'expanded') {
-            mainControlOverlay.classList.add('expanded-view');
+            rideStatusOverlay.classList.add('expanded-view');
         }
     }
     
-    // 1. Chỉ cho phép TOGGLE khi click vào TITLE
-    mainControlOverlay.addEventListener('click', (e) => {
-        // Chỉ toggle nếu click vào TIÊU ĐỀ ('overlayTitle')
-        if (e.target.id === 'overlayTitle') { 
-            if (mainControlOverlay.classList.contains('default-view')) {
-                toggleControlOverlay('expanded');
-            } else {
-                toggleControlOverlay('default');
-            }
+    // Sự kiện mở rộng/thu nhỏ Overlay
+    statusTitle.addEventListener('click', () => {
+        if (rideStatusOverlay.classList.contains('default-view')) {
+            toggleControlOverlay('expanded');
+        } else {
+            toggleControlOverlay('default');
         }
     });
-
-    // 2. Thêm sự kiện click MAP để ẩn Overlay (Click Outside)
+    
+    // Sự kiện click ra Map để thu nhỏ Overlay
     map.on('click', () => {
-        // Không ẩn nếu đang có cuốc xe mới hiển thị (để tránh làm mất card thông báo)
-        if (newRequestCard.style.display !== 'none') return; 
-        
-        // Ẩn Overlay nếu đang ở chế độ mở rộng
-        if (mainControlOverlay.classList.contains('expanded-view')) {
+        if (rideStatusOverlay.classList.contains('expanded-view')) {
             toggleControlOverlay('default');
         }
     });
-    
-    toggleControlOverlay('expanded'); // Mặc định mở rộng để thấy nút Online
 
-    // === HÀM PHÁT ÂM THANH VÀ RUNG ===
-    function notifyNewRide() {
-        if (navigator.vibrate) {
-            navigator.vibrate([500, 250, 500]); 
-        }
+    // Hàm Debounce để giới hạn số lần gọi API
+    function debounce(func, delay) {
+      let timeoutId;
+      return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+
+    // --- CHỨC NĂNG GEOCODING (TÌM KIẾM ĐỊA CHỈ) ---
+    async function geocode(q) {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=1&countrycodes=vn';
+      const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+      const arr = await res.json();
+      if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
+      // return first result {lat, lon, display_name}
+      return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name, rawData: arr[0] };
+    }
+
+    async function fetchSuggestions(query, targetInput, targetList) {
+        targetList.innerHTML = '';
+        if (query.length < 3) return;
+
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5&countrycodes=vn';
         try {
-            // Sử dụng âm thanh có sẵn, có thể thay đổi URL
-            const audio = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3'); 
-            audio.play();
+            const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+            const arr = await res.json();
+            
+            if (arr && arr.length > 0) {
+                arr.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerHTML = item.display_name;
+                    div.onclick = () => {
+                        targetInput.value = item.display_name;
+                        targetList.innerHTML = ''; // Xóa danh sách gợi ý
+                    };
+                    targetList.appendChild(div);
+                });
+            } else {
+                 // Không làm gì nếu không có gợi ý, để trống list
+            }
         } catch (e) {
-            console.warn('Không thể phát âm thanh:', e);
-        }
-    }
-    // ===========================================
-
-    // --- Cập nhật UI theo trạng thái ---
-    function updateDriverUI(status) {
-        const name = driverNameInput.value || 'Tài xế';
-        
-        // 1. TOP STATUS
-        if (status === 'online') {
-            topStatus.innerHTML = `<span style="color:#28a745;">&#9679;</span> ${name.split('-')[0].trim()} Online`;
-            topStatus.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
-        } else if (status === 'offline') {
-            topStatus.innerHTML = `<span style="color:#dc3545;">&#9679;</span> Đã Offline`;
-            topStatus.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
-        } else {
-            topStatus.innerHTML = 'Đang kết nối...';
-            topStatus.style.backgroundColor = 'rgba(255, 193, 7, 0.9)';
-        }
-
-        // 2. MAIN CONTROL OVERLAY
-        if (status === 'offline') {
-            offlineOnlineControls.style.display = 'block';
-            activeRideContent.style.display = 'none';
-            goOnlineBtn.style.display = 'block';
-            goOfflineBtn.style.display = 'none';
-            document.getElementById('driverNameInput').style.display = 'block';
-            document.getElementById('overlayTitle').innerText = 'Bảng Điều Khiển (Offline)';
-            toggleControlOverlay('expanded'); // Mở rộng để dễ dàng nhập tên và Online
-        } else {
-            document.getElementById('driverNameInput').style.display = 'none';
-            goOnlineBtn.style.display = 'none';
-            goOfflineBtn.style.display = 'block';
-            // Nội dung khác được quản lý bởi hàm checkAndShowRide
+            console.error("Lỗi tìm kiếm gợi ý:", e);
         }
     }
 
+    fromInput.oninput = debounce(() => fetchSuggestions(fromInput.value, fromInput, fromSuggestions), 500);
+    toInput.oninput = debounce(() => fetchSuggestions(toInput.value, toInput, toSuggestions), 500);
 
-    // --- HÀM ONLINE/OFFLINE CHÍNH ---
-    async function setDriverOnline(name, lat, lng) {
-        const dRef = ref(db, 'drivers/' + DRIVER_ID);
-        await set(dRef, { id: DRIVER_ID, name, lat, lng, online: true, updatedAt: Date.now() });
-        updateDriverUI('online');
-        toggleControlOverlay('default'); // Thu nhỏ sau khi Online
-    }
-    
-    async function setDriverOffline() {
-        const dRef = ref(db, 'drivers/' + DRIVER_ID);
-        await remove(dRef).catch(()=>{});
-        updateDriverUI('offline');
-        newRequestCard.style.display = 'none';
-        activeRideContent.style.display = 'none';
-        offlineOnlineControls.style.display = 'block';
-        goOfflineBtn.style.display = 'none';
-        goOnlineBtn.style.display = 'block';
-        // Xóa tất cả các route/marker khác khỏi map (trừ driverMarker)
-        Object.keys(shownRides).forEach(id => {
-            if (shownRides[id].routeControl) map.removeControl(shownRides[id].routeControl);
-        });
-        shownRides = {};
-    }
-
-    // ... (Giữ nguyên các hàm updateDriverLocation, startWatch, stopWatch, saveDriverState, loadDriverState) ...
-    function saveDriverState(isOnline, name) {
-        localStorage.setItem(STORAGE_KEY_STATUS, isOnline ? 'online' : 'offline');
-        localStorage.setItem(STORAGE_KEY_NAME, name);
-    }
-    function loadDriverState() {
-        const savedName = localStorage.getItem(STORAGE_KEY_NAME);
-        if (savedName) driverNameInput.value = savedName;
-        updateDriverUI(localStorage.getItem(STORAGE_KEY_STATUS) === 'online' ? 'online' : 'offline');
-        if (localStorage.getItem(STORAGE_KEY_STATUS) === 'online') {
-            setTimeout(() => goOnlineBtn.click(), 100); 
+    // Ẩn gợi ý khi click ra ngoài
+    document.addEventListener('click', (e) => {
+        if (e.target.id !== 'from' && e.target.id !== 'to') {
+            fromSuggestions.innerHTML = '';
+            toSuggestions.innerHTML = '';
         }
-    }
-    async function updateDriverLocation(lat, lng) {
-        lastPos = { lat, lng };
-        driverMarker.setLatLng([lat,lng]);
-        map.panTo([lat,lng]);
-        if (!online) return;
-        const dRef = ref(db, 'drivers/' + DRIVER_ID);
-        await update(dRef, { lat, lng, updatedAt: Date.now() }).catch(()=>{});
-        
-        Object.keys(shownRides).forEach(rideId => {
-            const s = shownRides[rideId];
-            if (s.accepted) { 
-                const rideRef = ref(db, 'rides/' + rideId);
-                update(rideRef, { driverLat: lat, driverLng: lng });
-                if (s.routeControl) {
-                    const waypoints = s.routeControl.getWaypoints();
-                    if (waypoints.length > 0) {
-                        waypoints[0].latLng = L.latLng(lat, lng);
-                        s.routeControl.setWaypoints(waypoints);
-                    }
-                }
-            }
-        });
-    }
-    function startWatch() {
-      if (!navigator.geolocation) { alert('Trình duyệt không hỗ trợ định vị'); return; }
-      navigator.geolocation.getCurrentPosition(async (p) => {
-        await updateDriverLocation(p.coords.latitude, p.coords.longitude);
-      }, ()=>{}, { enableHighAccuracy:true });
-      
-      watchId = navigator.geolocation.watchPosition(async (p) => {
-        await updateDriverLocation(p.coords.latitude, p.coords.longitude);
-      }, (err)=>console.warn(err), { enableHighAccuracy:true, maximumAge:2000, timeout:10000 });
-    }
-    function stopWatch() { if (watchId) navigator.geolocation.clearWatch(watchId); watchId = null; }
-    // =========================================================
-
-    // --- Lắng nghe Firebase (ridesRef) ---
-    const ridesRef = ref(db, 'rides');
-    
-    onChildAdded(ridesRef, (snap) => {
-      const ride = snap.val(); const rideId = snap.key;
-      if (!online || !ride || !lastPos) return;
-      checkAndShowRide(rideId, ride);
     });
+    // --- KẾT THÚC CHỨC NĂNG GEOCODING ---
 
-    onChildChanged(ridesRef, (snap) => {
-      const ride = snap.val(); const rideId = snap.key;
-      if (!online || !ride || (ride.status !== 'finding' && ride.driverId !== DRIVER_ID)) {
-        removeRideFromUI(rideId);
-        return;
+    // ... (Giữ nguyên các hàm khác) ...
+
+    // Reverse Geocode via Nominatim
+    async function reverseGeocode(lat, lng) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+      const data = await res.json();
+      if (data && data.display_name) {
+        return data.display_name;
       }
-      if (lastPos) checkAndShowRide(rideId, ride);
-    });
+      return `Vị trí (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    }
 
-    onChildRemoved(ridesRef, (snap) => {
-        const rideId = snap.key;
-        removeRideFromUI(rideId, shownRides[rideId]?.accepted || false);
-    });
-
-
-    function checkAndShowRide(rideId, rideObj) {
-        if (!rideObj.from) return;
-        
-        // --- Bổ sung kiểm tra vị trí tài xế đã được lấy ---
-        if (!lastPos) {
-             console.warn("Chưa có vị trí tài xế để tính khoảng cách.");
-             return;
+    // Get current location, update map, and fill 'from' input
+    function getCurrentLocationAndInitMap() {
+        if (!navigator.geolocation) {
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Trình duyệt không hỗ trợ định vị. Vui lòng nhập địa chỉ.</div>`;
+            return;
         }
-        // --- Kết thúc bổ sung ---
 
-        const driverPt = turf.point([lastPos.lng, lastPos.lat]);
-        const pickupPt = turf.point([rideObj.from.lng, rideObj.from.lat]);
-        const d = turf.distance(driverPt, pickupPt, { units: 'kilometers' });
-        
-        const isFindingAndNear = (rideObj.status === 'finding' && d <= 3);
-        const isAcceptedByMe = (rideObj.driverId === DRIVER_ID && (rideObj.status === 'accepted' || rideObj.status === 'onTrip'));
-        
-        // 1. HIỂN THỊ CUỐC MỚI (NEW REQUEST CARD)
-        if (isFindingAndNear) {
-            // Nếu đã có cuốc đang hoạt động, bỏ qua cuốc mới đang tìm
-            const activeRideId = Object.keys(shownRides).find(id => shownRides[id].accepted === true);
-            if (activeRideId) return; 
+        infoDiv.innerHTML = `<div style="color:var(--primary-color);">Đang tìm vị trí hiện tại...</div>`;
+
+        // Attempt to get high accuracy position
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            riderCurrentPos = { lat, lng };
+
+            // Center map and add marker
+            map.setView([lat, lng], 16);
+            if (riderCurrentMarker) map.removeLayer(riderCurrentMarker); // Xóa marker cũ nếu có
+            riderCurrentMarker = L.marker([lat, lng]).addTo(map);
+            riderCurrentMarker.bindPopup("Vị trí của bạn").openPopup();
+
+            // Reverse Geocode to fill 'from' input
+            try {
+                const addressText = await reverseGeocode(lat, lng);
+                riderCurrentPos.display = addressText;
+                // Đề xuất địa chỉ (tự động điền)
+                document.getElementById('from').value = addressText; 
+                infoDiv.innerHTML = `<div style="color:var(--success-color);">Đã tìm thấy vị trí hiện tại: ${addressText.split(',').slice(0, 2).join(',')}</div>`;
+            } catch (e) {
+                console.error("Lỗi reverse geocode:", e);
+                document.getElementById('from').value = `(${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+            }
+
+        }, (err) => {
+            console.warn(`Lỗi định vị: ${err.code} - ${err.message}`);
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Không lấy được vị trí hiện tại. Vui lòng nhập địa chỉ.</div>`;
+        }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+    }
+
+
+    // Estimate route using Leaflet Routing Machine (OSRM public)
+    function showRoute(fromCoords, toCoords) {
+      if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
+      routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(fromCoords.lat, fromCoords.lng),
+          L.latLng(toCoords.lat, toCoords.lng)
+        ],
+        router: L.Routing.osrmv1({serviceUrl: 'https://router.project-osrm.org/route/v1'}),
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        showAlternatives: false,
+        // Dùng marker mặc định để phân biệt rõ ràng
+        createMarker: function(i, wp, n) {
+            let iconUrl = (i === 0) ? 
+                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png' : // Điểm đón (FROM)
+                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png'; // Điểm đến (TO)
             
-            // Chỉ hiện 1 cuốc mới đang chờ (nếu có cuốc đang chờ khác, không gọi lại notify)
-            const findingRideId = Object.keys(shownRides).find(id => shownRides[id].currentStatus === 'finding');
-            if (!findingRideId) {
-                createRequestCard(rideId, rideObj, d);
-                notifyNewRide(); // Chỉ gọi notify khi thực sự tạo card mới
-            } else if (findingRideId !== rideId) {
-                 return;
-            }
+            return L.marker(wp.latLng, { 
+                draggable: false, 
+                icon: L.icon({
+                    iconUrl: iconUrl,
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                }) 
+            });
+        }
+      }).addTo(map);
 
-            // Ẩn nội dung chính, chỉ để nút Online/Offline nếu cần
-            activeRideContent.style.display = 'none';
-            offlineOnlineControls.style.display = 'block'; 
-            document.getElementById('overlayTitle').innerText = `Chờ chấp nhận Cuốc #${rideId.slice(-4)}`;
-            toggleControlOverlay('default'); // Giữ nhỏ overlay chính
-        } 
+      routingControl.on('routesfound', function(e) {
+        const route = e.routes[0];
+        lastRouteSummary = { distance: route.summary.totalDistance, duration: route.summary.totalTime };
+        displayInfo();
+        requestBtn.disabled = false;
+      });
+      // Bắt lỗi khi không tìm thấy tuyến đường (thường do lỗi OSRM/Geocoding)
+      routingControl.on('routingerror', function(e) {
+        alert('Lỗi tìm tuyến đường: Không thể kết nối các điểm đã chọn.');
+        requestBtn.disabled = true;
+      });
+    }
+
+    function displayInfo() {
+      if (!lastRouteSummary) return;
+      const km = (lastRouteSummary.distance / 1000);
+      const mins = Math.round(lastRouteSummary.duration / 60);
+      const vehicle = document.getElementById('vehicle').value;
+      let priceCalc = 0;
+      if (vehicle === 'bike') {
+        priceCalc = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
+      } else {
+        priceCalc = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
+      }
+      infoDiv.innerHTML = `
+        <div><b>Khoảng cách:</b> ${km.toFixed(2)} km</div>
+        <div><b>Thời gian dự kiến:</b> ${mins} phút</div>
+        <div><b>Loại xe:</b> ${vehicle === 'bike' ? 'Xe máy' : 'Ô tô'}</div>
+        <div><b>Giá ước tính:</b> ${priceCalc.toLocaleString()} đ</div>
+      `;
+    }
+
+    // === HÀM CẬP NHẬT TRẠNG THÁI CUỐC XE (Giữ nguyên) ===
+    function updateRideStatusUI(ride) {
+        if (!rideStatusOverlay.style.display || rideStatusOverlay.style.display === 'none') {
+            rideStatusOverlay.style.display = 'block';
+            toggleControlOverlay('expanded'); // Mở rộng khi bắt đầu
+        }
+
+        let titleText = `Cuốc xe #${currentRideId.slice(-4)}`;
+        let contentHTML = '';
+        let showCancel = true;
         
-        // 2. HIỂN THỊ CUỐC ĐANG HOẠT ĐỘNG (ACTIVE RIDE CONTENT)
-        else if (isAcceptedByMe) {
-            const isNewActiveRide = !shownRides[rideId] || shownRides[rideId].accepted === false;
+        statusTitle.classList.remove('status-finding', 'status-accepted', 'status-completed', 'status-canceled');
 
-            if (isNewActiveRide) {
-                // Lần đầu tiên nhận cuốc
-                createActiveRideUI(rideId, rideObj, d);
-            }
-            updateActiveRideUI(rideId, rideObj, d);
-            
-            // Hiện nội dung chuyến đi, ẩn điều khiển Online/Offline
-            offlineOnlineControls.style.display = 'none';
-            activeRideContent.style.display = 'block';
-            document.getElementById('overlayTitle').innerText = `Cuốc đang chạy #${rideId.slice(-4)}`;
-            newRequestCard.style.display = 'none';
+        switch (ride.status) {
+            case 'finding':
+                titleText = 'Đang tìm tài xế...';
+                statusTitle.classList.add('status-finding');
+                contentHTML = `
+                    <p style="text-align:center; font-weight:bold; color:orange;">Đang gửi yêu cầu đến các tài xế gần bạn.</p>
+                    <p>Vui lòng chờ chấp nhận (3 phút).</p>
+                `;
+                break;
+            case 'accepted':
+                titleText = `Tài xế ${ride.driverName.split('-')[0].trim()} đã nhận cuốc!`;
+                statusTitle.classList.add('status-accepted');
+                contentHTML = `
+                    <p><b>Tài xế:</b> ${ride.driverName}</p>
+                    <p><b>Trạng thái:</b> Đang trên đường đến điểm đón.</p>
+                `;
+                break;
+            case 'onTrip':
+                titleText = 'Đang trên đường đi';
+                statusTitle.classList.add('status-accepted');
+                contentHTML = `
+                    <p><b>Tài xế:</b> ${ride.driverName}</p>
+                    <p><b>Trạng thái:</b> Đã đón khách, đang di chuyển đến điểm đến.</p>
+                `;
+                break;
+            case 'completed':
+                titleText = 'Cuốc xe hoàn thành!';
+                statusTitle.classList.add('status-completed');
+                contentHTML = `
+                    <p style="text-align:center; font-weight:bold; color:var(--success-color);">Cảm ơn bạn đã sử dụng dịch vụ!</p>
+                    <p>Tổng tiền: ${ride.fare ? ride.fare.toLocaleString() + ' đ' : '—'}</p>
+                `;
+                showCancel = false;
+                break;
+            case 'canceled':
+                titleText = 'Cuốc xe đã bị HỦY';
+                statusTitle.classList.add('status-canceled');
+                contentHTML = `<p style="text-align:center; font-weight:bold; color:var(--danger-color);">Cuốc xe đã bị hủy bởi bạn hoặc tài xế.</p>`;
+                showCancel = false;
+                break;
+            default:
+                titleText = 'Lỗi trạng thái';
+                showCancel = false;
+        }
 
-            // **FIX HERE:** Mở rộng Overlay MỘT LẦN để tài xế xem chi tiết cuốc xe mới chấp nhận
-            if (isNewActiveRide) {
-                 toggleControlOverlay('expanded');
+        statusTitle.innerHTML = titleText;
+        rideStatusContent.innerHTML = contentHTML;
+        cancelRideBtn.style.display = showCancel ? 'block' : 'none';
+
+        // Cập nhật vị trí tài xế trên bản đồ
+        if (ride.driverLat && ride.driverLng) {
+            const driverCoords = L.latLng(ride.driverLat, ride.driverLng);
+            if (!driverMarker) {
+                driverMarker = L.marker(driverCoords, { icon: L.icon({
+                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                }) }).addTo(map);
+                driverMarker.bindPopup("Tài xế của bạn").openPopup();
+            } else {
+                driverMarker.setLatLng(driverCoords);
             }
-        } 
-        
-        // 3. XÓA NẾU KHÔNG CÒN LIÊN QUAN
-        else {
-            removeRideFromUI(rideId);
+        } else if (driverMarker) {
+            map.removeLayer(driverMarker);
+            driverMarker = null;
         }
     }
     
-    // --- HÀM TẠO UI CHO CUỐC MỚI (NEW REQUEST) ---
-    function createRequestCard(rideId, rideObj, distKm) {
-        if (shownRides[rideId]) return;
-
-        // Xóa tất cả các cuốc đang chờ khác trước khi hiển thị cuốc mới
-        Object.keys(shownRides).forEach(id => {
-            if (shownRides[id].accepted === false) removeRideFromUI(id);
+    // === HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE (Giữ nguyên) ===
+    function listenToRide(rideId) {
+        currentRideId = rideId;
+        const rideRef = ref(db, 'rides/' + rideId);
+        
+        onValue(rideRef, (snapshot) => {
+            const ride = snapshot.val();
+            if (ride) {
+                updateRideStatusUI(ride);
+                if (ride.status === 'completed' || ride.status === 'canceled') {
+                    setTimeout(() => {
+                        rideStatusOverlay.style.display = 'none';
+                        currentRideId = null;
+                        if (driverMarker) map.removeLayer(driverMarker);
+                        driverMarker = null;
+                        document.getElementById('from').disabled = false;
+                        document.getElementById('to').disabled = false;
+                        document.getElementById('vehicle').disabled = false;
+                        requestBtn.disabled = true; 
+                    }, 5000);
+                }
+            } else {
+                updateRideStatusUI({ status: 'canceled', fare: 0 });
+                setTimeout(() => {
+                    rideStatusOverlay.style.display = 'none';
+                    currentRideId = null;
+                    if (driverMarker) map.removeLayer(driverMarker);
+                    driverMarker = null;
+                    document.getElementById('from').disabled = false;
+                    document.getElementById('to').disabled = false;
+                    document.getElementById('vehicle').disabled = false;
+                    requestBtn.disabled = true; 
+                }, 5000);
+            }
         });
         
-        const pickup = `${rideObj.fromText || '—'}`;
-        const dest = `${rideObj.toText || '—'}`;
-        
-        newRequestCard.innerHTML = `
-            <h3>🛎 CUỐC MỚI (#${rideId.slice(-4)})</h3>
-            <div style="font-size: 0.9em; margin-bottom: 5px;">
-                Cách: ${distKm.toFixed(2)} km. Đến: ${dest.split(',').slice(0, 2).join(',')}
-            </div>
-            <div style="font-weight: bold; color: var(--danger-color); margin-bottom: 5px;">
-                Giá: ${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}
-            </div>
-            <div class="row">
-                <button id="acceptBtn_${rideId}" class="btn btn-accept col">CHẤP NHẬN</button>
-                <button id="rejectBtn_${rideId}" class="btn btn-secondary col">TỪ CHỐI</button>
-            </div>
-        `;
-        // Đảm bảo card được hiển thị
-        newRequestCard.style.display = 'block'; 
-
-        document.getElementById(`acceptBtn_${rideId}`).onclick = () => acceptRide(rideId, rideObj);
-        document.getElementById(`rejectBtn_${rideId}`).onclick = () => removeRideFromUI(rideId);
-        
-        // Chỉ lưu cuốc mới vào shownRides
-        shownRides[rideId] = { el: newRequestCard, routeControl: null, accepted: false, currentStatus: 'finding' };
+        cancelRideBtn.onclick = () => cancelRide(rideId);
     }
     
-    // --- HÀM TẠO UI CHO CUỐC ĐANG HOẠT ĐỘNG (ACTIVE RIDE) ---
-    function createActiveRideUI(rideId, rideObj, distKm) {
-        // Xóa tất cả các cuốc đang chờ khác
-        Object.keys(shownRides).forEach(id => {
-            if (id !== rideId && !shownRides[id].accepted) removeRideFromUI(id);
-        });
-
-        if (shownRides[rideId]) {
-             if (shownRides[rideId].routeControl) map.removeControl(shownRides[rideId].routeControl);
-             // Xóa nếu nó là thẻ chờ và thay thế bằng thẻ hoạt động
-             if (!shownRides[rideId].accepted) delete shownRides[rideId];
-             else return; // Đã là cuốc hoạt động, không tạo lại
-        }
-
-        const pickup = `${rideObj.fromText || '—'}`;
-        const dest = `${rideObj.toText || '—'}`;
-
-        document.getElementById('rideDetails').innerHTML = `
-            <div><b><span style="color:var(--secondary-color);">Đón Khách:</span></b> ${pickup}</div>
-            <div style="margin-top: 5px;"><b><span style="color:var(--primary-color);">Điểm Đến:</span></b> ${dest}</div>
-            <div style="margin-top: 5px;"><b>Khoảng cách:</b> ${(rideObj.distance_m / 1000).toFixed(2)} km</div>
-            <div style="font-weight: bold; color: var(--success-color); margin-top: 5px;">
-                Giá cuốc: ${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}
-            </div>
-        `;
-
-        document.getElementById('cancelActiveRideBtn').onclick = () => cancelRide(rideId);
-
-        shownRides[rideId] = { routeControl: null, accepted: true, currentStatus: rideObj.status };
-    }
-    
-    // --- HÀM CẬP NHẬT UI CHO CUỐC ĐANG HOẠT ĐỘNG ---
-    function updateActiveRideUI(rideId, rideObj, distKm) {
-        const s = shownRides[rideId];
-        if (!s || s.accepted === false) return; // Không tìm thấy cuốc hoạt động
-
-        // Nếu status không đổi và đã vẽ route, không cần làm gì
-        if (s.currentStatus === rideObj.status && s.routeControl) return; 
-
-        s.currentStatus = rideObj.status;
-        const actionsDiv = document.getElementById('activeRideActions');
-        actionsDiv.innerHTML = '';
-
-        const fromLat = rideObj.from.lat;
-        const fromLng = rideObj.from.lng;
-        const toLat = rideObj.to.lat;
-        const toLng = rideObj.to.lng;
-
-        // Xóa route cũ
-        if (s.routeControl) { map.removeControl(s.routeControl); s.routeControl = null; }
-
-        let waypoints;
-        let actionBtn;
-        let statusTitleText;
-
-        if (rideObj.status === 'accepted') {
-            // Đến điểm đón
-            waypoints = [ L.latLng(lastPos.lat, lastPos.lng), L.latLng(fromLat, fromLng) ]; 
-            statusTitleText = 'Đang chạy đến đón khách';
-            actionBtn = document.createElement('button');
-            actionBtn.className = 'btn btn-primary col';
-            actionBtn.innerText = 'ĐÃ ĐÓN KHÁCH (Start Trip)';
-            actionBtn.onclick = () => startTrip(rideId);
-        } else if (rideObj.status === 'onTrip') {
-            // Đến điểm đến
-            waypoints = [ L.latLng(lastPos.lat, lastPos.lng), L.latLng(toLat, toLng) ]; 
-            statusTitleText = 'ĐANG TRÊN ĐƯỜNG';
-            actionBtn = document.createElement('button');
-            actionBtn.className = 'btn btn-complete col';
-            actionBtn.innerText = 'HOÀN THÀNH CUỐC';
-            actionBtn.onclick = () => completeRide(rideId);
-        }
-        
-        document.getElementById('rideStatusTitle').innerHTML = `<span style="color:var(--success-color);">${statusTitleText}</span>`;
-        actionsDiv.appendChild(actionBtn);
-
-        // Vẽ Route mới
-        s.routeControl = L.Routing.control({
-            waypoints,
-            router: L.Routing.osrmv1({serviceUrl: 'https://router.project-osrm.org/route/v1'}),
-            fitSelectedRoutes: true,
-            addWaypoints: false,
-            showAlternatives: false,
-            lineOptions: { styles: [{ color: '#007bff', weight: 6, opacity: 0.7 }] } 
-        }).addTo(map);
-        s.routeControl.route(); 
-    }
-    
-    // --- HÀM XÓA UI (Xử lý hủy chuyến) ---
-    function removeRideFromUI(rideId, wasActive = false) {
-        if (!shownRides[rideId]) return;
-
-        if (shownRides[rideId].routeControl) { 
-            try { map.removeControl(shownRides[rideId].routeControl); } catch(e){} 
-        }
-        
-        // Chỉ xóa item trong shownRides nếu nó không phải cuốc đang hoạt động của mình
-        if (shownRides[rideId].accepted === false || (shownRides[rideId].accepted === true && rideId === Object.keys(shownRides).find(id => shownRides[id].accepted === true))) {
-             delete shownRides[rideId];
-        } else {
-             return; // Không xóa cuốc đang hoạt động
-        }
-        
-        newRequestCard.style.display = 'none';
-
-        // THÔNG BÁO HỦY CHUYẾN ĐANG HOẠT ĐỘNG
-        if (wasActive) { 
-            alert(`Thông báo: Khách hàng đã HỦY cuốc xe #${rideId.slice(-4)}. Quay lại trạng thái tìm cuốc.`);
-        }
-        
-        // Quay về trạng thái Online rảnh rỗi (hoặc Offline nếu đang Offline)
-        if (online) {
-            activeRideContent.style.display = 'none';
-            offlineOnlineControls.style.display = 'block';
-            document.getElementById('overlayTitle').innerText = 'Bảng Điều Khiển (Online)';
-            toggleControlOverlay('default');
-        } else {
-             updateDriverUI('offline');
-        }
-    }
-
-    // --- HÀM XỬ LÝ NÚT CHUYẾN ĐI (Giữ nguyên logic) ---
-    async function startTrip(rideId) {
-        if (!confirm("Xác nhận bạn đã đón khách và bắt đầu hành trình đến điểm đến?")) return;
-        try {
-            const rideRef = ref(db, 'rides/' + rideId);
-            await update(rideRef, { status: 'onTrip', startedTripAt: Date.now() });
-        } catch (e) { alert('Lỗi khi bắt đầu hành trình: ' + (e.message || e)); }
-    }
+    // === HÀM HỦY CUỐC XE (Giữ nguyên) ===
     async function cancelRide(rideId) {
-        if (!confirm("Bạn chắc chắn muốn hủy cuốc xe này? Việc hủy sẽ thông báo cho khách và xóa cuốc xe.")) return;
+        if (!confirm("Bạn chắc chắn muốn hủy cuốc xe này?")) return;
         try {
             const rideRef = ref(db, 'rides/' + rideId);
-            await remove(rideRef); 
-            removeRideFromUI(rideId, true);
-        } catch (e) { alert('Lỗi hủy chuyến: ' + (e.message || e)); }
-    }
-    async function acceptRide(rideId, rideObj) {
-      newRequestCard.style.display = 'none';
-      const rideRef = ref(db, 'rides/' + rideId);
-      onValue(rideRef, async (snap) => {
-        const current = snap.val();
-        if (!current) { alert('Cuốc đã bị hủy'); removeRideFromUI(rideId, true); return; } 
-        if (current.status && current.status !== 'finding') { alert('Cuốc đã được nhận bởi người khác'); removeRideFromUI(rideId); return; }
-
-        const driverName = driverNameInput.value || ('Tài xế_' + DRIVER_ID.slice(-4));
-        await update(rideRef, {
-          status: 'accepted',
-          driverId: DRIVER_ID,
-          driverName,
-          driverLat: lastPos.lat,
-          driverLng: lastPos.lng,
-          acceptedAt: Date.now()
-        });
-        // Sau khi update thành công, onChildChanged sẽ kích hoạt checkAndShowRide và vẽ UI mới
-        // checkAndShowRide sẽ tự động mở rộng Overlay nếu đây là cuốc mới được chấp nhận
-      }, { onlyOnce: true });
-    }
-    async function completeRide(rideId) {
-      if (!confirm("Xác nhận đã hoàn thành cuốc xe?")) return;
-      const rideRef = ref(db, 'rides/' + rideId);
-      onValue(rideRef, async (snap) => {
-        const current = snap.val();
-        if (!current) { removeRideFromUI(rideId); return; }
-        const historyRef = ref(db, 'history');
-        const entry = { ...current, completedAt: Date.now(), completedBy: DRIVER_ID };
-        await push(historyRef, entry);
-        await remove(rideRef).catch(()=>{});
-        removeRideFromUI(rideId);
-      }, { onlyOnce: true });
-    }
-    
-    // --- EVENT LISTENERS CHUNG ---
-    goOnlineBtn.addEventListener('click', async () => {
-      const name = driverNameInput.value || ('Tài xế_' + DRIVER_ID.slice(-4));
-      if (name.length < 5) { alert("Vui lòng nhập Tên và Biển số xe để Online."); return; }
-      online = true;
-      updateDriverUI('connecting');
-      startWatch();
-      saveDriverState(true, name);
-
-      setTimeout(async () => {
-        if (!lastPos) {
-          alert('Không lấy được vị trí — kiểm tra quyền truy cập vị trí');
-          online = false;
-          setDriverOffline(); 
-          saveDriverState(false, name);
-          return;
+            await update(rideRef, { status: 'canceled', canceledBy: 'rider', canceledAt: Date.now() });
+            await remove(rideRef);
+            alert("Cuốc xe đã được hủy.");
+        } catch (e) {
+            alert('Lỗi hủy cuốc: ' + (e.message || e));
         }
-        await setDriverOnline(name, lastPos.lat, lastPos.lng);
-      }, 900);
+    }
+
+    // Button: Estimate
+    estimateBtn.addEventListener('click', async () => {
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
+      if (!from || !to) return alert('Nhập điểm đón và điểm đến');
+      
+      // Xóa các gợi ý cũ
+      fromSuggestions.innerHTML = '';
+      toSuggestions.innerHTML = '';
+
+      try {
+        if (currentRideId) return alert("Bạn đang có cuốc xe đang hoạt động!");
+        estimateBtn.disabled = true;
+        infoDiv.innerHTML = 'Đang tìm địa chỉ...';
+        
+        // --- CHỖ NÀY CÓ THỂ LÀM NÚT ESTIMATE BÁO LỖI NẾU KHÔNG CÓ KẾT QUẢ ---
+        const fromCoords = await geocode(from);
+        const toCoords = await geocode(to);
+        
+        // Nếu thành công, cập nhật lại giá trị input với tên đầy đủ
+        document.getElementById('from').value = fromCoords.display;
+        document.getElementById('to').value = toCoords.display;
+        
+        showRoute(fromCoords, toCoords);
+        infoDiv.innerHTML = `<div style="color:blue">Đã tìm thấy tuyến đường. Xem thông tin ước tính phía trên.</div>`;
+
+      } catch (e) {
+        alert(e.message || 'Lỗi khi geocode hoặc tìm tuyến'); 
+        infoDiv.innerHTML = `<div style="color:var(--danger-color);">Lỗi: ${e.message || 'Không tìm thấy địa điểm hoặc tuyến đường.'}</div>`;
+        requestBtn.disabled = true;
+      } finally {
+        estimateBtn.disabled = false;
+      }
     });
 
-    goOfflineBtn.addEventListener('click', async () => {
-      online = false;
-      stopWatch();
-      await setDriverOffline();
-      saveDriverState(false, driverNameInput.value);
+    // Button: Request (push ride into /rides)
+    requestBtn.addEventListener('click', async () => {
+      if (!lastRouteSummary) return alert('Chưa có tuyến');
+      if (currentRideId) return alert("Bạn đang có cuốc xe đang hoạt động!");
+
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
+      const vehicle = document.getElementById('vehicle').value;
+      const km = lastRouteSummary.distance / 1000;
+      const mins = Math.round(lastRouteSummary.duration / 60);
+
+      // calculate fare
+      let fare = 0;
+      if (vehicle === 'bike') fare = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
+      else fare = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
+
+      const waypointFrom = routingControl.getWaypoints()[0].latLng;
+      const waypointTo = routingControl.getWaypoints()[1].latLng;
+
+      // create ride object
+      const ride = {
+        createdAt: Date.now(),
+        status: 'finding',
+        fromText: from,
+        toText: to,
+        from: { lat: waypointFrom.lat, lng: waypointFrom.lng }, 
+        to: { lat: waypointTo.lat, lng: waypointTo.lng },
+        distance_m: lastRouteSummary.distance,
+        duration_s: lastRouteSummary.duration,
+        distance_km: km,
+        duration_min: mins,
+        fare: fare,
+        vehicle: vehicle
+      };
+
+      try {
+        const ridesRef = ref(db, 'rides');
+        requestBtn.disabled = true;
+        const newRef = await push(ridesRef, ride);
+        
+        infoDiv.innerHTML = `<div style="color:blue">Đã gọi xe. ID: ${newRef.key}. Đang tìm tài xế...</div>`;
+        
+        listenToRide(newRef.key);
+
+        document.getElementById('from').disabled = true;
+        document.getElementById('to').disabled = true;
+        document.getElementById('vehicle').disabled = true;
+
+      } catch (e) {
+        alert('Lỗi gửi yêu cầu: ' + (e.message || e));
+        requestBtn.disabled = false;
+      }
     });
 
-    window.addEventListener('beforeunload', async () => {
-      if (online) { await setDriverOffline(); }
-    });
+    // Gọi hàm định vị khi trang được tải
+    getCurrentLocationAndInitMap();
 
-    loadDriverState(); 
   </script>
 </body>
 </html>
