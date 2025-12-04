@@ -5,14 +5,7 @@
   <title>Rider — Đặt xe</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    body{font-family:Arial;margin:0;padding:12px}
-    #map{height:50vh;margin-top:8px}
-    input, select, button{padding:8px;margin:6px 0;width:100%;box-sizing:border-box}
-    .row{display:flex;gap:8px}
-    .col{flex:1}
-  </style>
-</head>
+  <link rel="stylesheet" href="style.css" /> </head>
 <body>
   <h2>Đặt xe — Nhập địa chỉ</h2>
 
@@ -29,31 +22,30 @@
   </select>
 
   <div class="row">
-    <button id="estimateBtn" class="col">Ước tính & Hiển thị tuyến</button>
-    <button id="requestBtn" class="col" disabled>Gọi xe (lưu)</button>
+    <button id="estimateBtn" class="col btn btn-primary">Ước tính & Hiển thị tuyến</button>
+    <button id="requestBtn" class="col btn btn-secondary" disabled>Gọi xe (lưu)</button>
   </div>
 
   <div id="info"></div>
   <div id="map"></div>
 
-  <!-- libs -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
 
-  <!-- Firebase modular -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, push, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // ====== THAY BẰNG FIREBASE CONFIG CỦA BẠN ======
+    // ====== FIREBASE CONFIG ĐÃ ĐỒNG BỘ ======
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "XXX",
-      appId: "XXX"
+      apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
+      authDomain: "robotkitkat6-bee.firebaseapp.com",
+      databaseURL: "https://robotkitkat6-bee-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "robotkitkat6-bee",
+      storageBucket: "robotkitkat6-bee.firebasestorage.app",
+      messagingSenderId: "117130770804",
+      appId: "1:117130770804:web:4827cc61a7c9df99549421",
+      measurementId: "G-WMKP4GT930"
     };
     // =============================================
 
@@ -134,12 +126,14 @@
       if (!from || !to) return alert('Nhập điểm đón và điểm đến');
       try {
         estimateBtn.disabled = true;
+        requestBtn.disabled = true;
         infoDiv.innerHTML = 'Đang tìm địa chỉ...';
         const fromCoords = await geocode(from);
         const toCoords = await geocode(to);
         showRoute(fromCoords, toCoords);
       } catch (e) {
         alert(e.message || 'Lỗi khi geocode');
+        infoDiv.innerHTML = '';
       } finally {
         estimateBtn.disabled = false;
       }
@@ -178,7 +172,7 @@
       try {
         const ridesRef = ref(db, 'rides');
         const newRef = await push(ridesRef, ride);
-        infoDiv.innerHTML += `<div style="color:green">Yêu cầu đã gửi (ID: ${newRef.key}). Đang tìm tài xế...</div>`;
+        infoDiv.innerHTML += `<div style="color:var(--success-color); margin-top: 10px;">Yêu cầu đã gửi (ID: ${newRef.key}). Đang tìm tài xế...</div>`;
         requestBtn.disabled = true;
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
