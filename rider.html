@@ -110,18 +110,39 @@
 
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
 
-    // === HÀM TOAST ===
-    function showToast(message, duration = 3000) {
+    // === SỬA HÀM TOAST: Thêm tham số sticky (giữ thông báo) ===
+    let currentToastTimeout = null;
+
+    function hideToast() {
+        toastDiv.classList.remove('show');
+        if (currentToastTimeout) clearTimeout(currentToastTimeout);
+        currentToastTimeout = null;
+        setTimeout(() => {
+            toastDiv.style.display = 'none';
+        }, 500);
+    }
+    
+    function showToast(message, duration = 3000, sticky = false) {
+        // Xóa timeout cũ nếu có (và reset ẩn)
+        if (currentToastTimeout) {
+            clearTimeout(currentToastTimeout);
+            currentToastTimeout = null;
+            hideToast(); 
+        }
+
         toastDiv.textContent = message;
         toastDiv.style.display = 'block';
-        toastDiv.classList.add('show');
         
+        // Timeout ngắn để chuyển trạng thái "show"
         setTimeout(() => {
-            toastDiv.classList.remove('show');
-            setTimeout(() => {
-                toastDiv.style.display = 'none';
-            }, 500);
-        }, duration);
+            toastDiv.classList.add('show');
+        }, 50);
+
+        if (!sticky) {
+            currentToastTimeout = setTimeout(() => {
+                hideToast();
+            }, duration);
+        }
     }
     // ==================
 
@@ -313,6 +334,7 @@
             if (!ride) {
                  if (currentRideId === rideId) {
                      showToast('Cuốc xe đã kết thúc hoặc bị hủy.', 5000);
+                     hideToast(); // Ẩn ngay sau khi báo hủy
                      cancelBtn.style.display = 'none';
                      requestBtn.disabled = false;
                      currentRideId = null;
@@ -323,19 +345,24 @@
             const driverName = ride.driverName || 'Tài xế';
 
             if (ride.status === 'accepted') {
-                showToast(`✅ Tài xế ${driverName.split('-')[0].trim()} đã nhận cuốc! Đang đến đón bạn.`, 8000);
+                // Khi được nhận, thông báo ngắn và tự động ẩn (sticky=false)
+                showToast(`✅ Tài xế ${driverName.split('-')[0].trim()} đã nhận cuốc! Đang đến đón bạn.`, 8000, false);
                 infoDiv.innerHTML = `<div style="color:var(--primary-color);">Tài xế <b>${driverName}</b> đang đến đón bạn.</div>`;
             } else if (ride.status === 'onTrip') {
-                showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName.split('-')[0].trim()}!`, 8000);
+                // Khi bắt đầu chuyến đi, thông báo ngắn và tự động ẩn (sticky=false)
+                showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName.split('-')[0].trim()}!`, 8000, false);
                 infoDiv.innerHTML = `<div style="color:var(--success-color);">Bạn đang trên đường đến điểm đến.</div>`;
             } else if (ride.status === 'finding') {
-                showToast('🔍 Đang tìm tài xế gần bạn...');
+                // ĐANG TÌM TÀI XẾ: SỬ DỤNG STICKY = TRUE
+                showToast('🔍 Đang tìm tài xế gần bạn...', 0, true); 
                 infoDiv.innerHTML = `<div style="color:var(--secondary-color);">Yêu cầu đã gửi (ID: ${rideId.slice(-4)}). Đang tìm tài xế...</div>`;
             }
             
             if (ride.status !== 'completed' && ride.status !== 'canceled') {
                 cancelBtn.style.display = 'block';
                 cancelBtn.disabled = false;
+            } else {
+                 hideToast(); // Ẩn toast nếu trạng thái là hoàn thành/hủy
             }
 
         });
@@ -351,6 +378,7 @@
         requestBtn.disabled = true;
         infoDiv.innerHTML = '<div style="color:var(--secondary-color);">Đang tìm địa chỉ...</div>';
         cancelBtn.style.display = 'none';
+        hideToast(); // Đảm bảo ẩn toast cũ nếu có
 
         let fromCoords, toCoords;
 
@@ -415,7 +443,7 @@
         listenForAcceptance(rideId);
         
         requestBtn.disabled = true;
-        showToast('✅ Yêu cầu đã gửi. Đang tìm tài xế...');
+        // Bỏ showToast ở đây vì listenForAcceptance đã đảm nhận việc hiển thị STICKY toast
 
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
