@@ -10,6 +10,7 @@
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Bóng đổ mạnh hơn */
 }
 
+/* --- BASE LAYOUT: MAP chiếm toàn bộ màn hình --- */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
@@ -18,169 +19,109 @@ body {
   overflow-x: hidden;
 }
 
-/* --- LAYOUT CHÍNH: MAP chiếm toàn bộ màn hình, các thành phần khác OVERLAY --- */
 .map-page-container {
     display: flex;
     flex-direction: column;
-    height: 100vh; /* Quan trọng: Đảm bảo chiếm 100% màn hình */
+    height: 100vh; /* Quan trọng: Chiếm 100% chiều cao màn hình */
     position: relative;
 }
 
 #map {
-  flex-grow: 1; /* Cho phép map chiếm hết phần không gian còn lại */
+  flex-grow: 1; 
   z-index: 1; 
-  height: 100%; /* Giữ nguyên chiều cao 100% container */
+  height: 100%; 
 }
 
 h2 {
   color: #343a40;
   margin-top: 0;
   margin-bottom: 15px;
-  padding: 0;
   font-size: 1.2em;
 }
 
-/* --- CARD/OVERLAY CHUNG --- */
-.overlay-card {
-    position: absolute;
-    top: auto;
-    bottom: 0px; /* Đặt sát mép dưới */
-    left: 0;
-    right: 0;
-    z-index: 100; 
-    background-color: var(--card-bg);
-    padding: 15px;
-    border-radius: 12px 12px 0 0; /* Bo góc trên */
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-    max-height: 80vh; /* Giới hạn chiều cao */
-    overflow-y: auto;
-    width: 100%;
-    box-sizing: border-box;
-    transition: all 0.3s ease-in-out;
-}
+/* --- TÀI XẾ (DRIVER) CÁC LỚP PHỦ --- */
 
-/* --- DRIVER SPECIFIC OVERLAYS --- */
-/* Overlay điều khiển ban đầu (Online/Offline) */
-#statusControl.overlay-card {
+/* 1. Lớp phủ Trạng thái trên cùng (Góc phải) */
+#topStatus {
+    position: fixed;
     top: 15px;
-    bottom: auto;
-    left: 15px;
-    right: auto;
-    width: auto;
-    max-width: 300px;
-    border-radius: 12px;
-}
-/* Trạng thái sau khi Online (nhỏ lại, nền đen, góc trên bên phải) */
-#statusControl.small {
-    padding: 8px 12px;
-    width: auto;
-    max-width: 280px;
     right: 15px;
-    left: auto;
-    top: 15px;
-    bottom: auto;
-    background-color: rgba(0, 0, 0, 0.85); /* Nền đen mờ */
-    color: white; /* Chữ trắng */
+    z-index: 1000;
+    padding: 8px 12px;
+    background-color: rgba(0, 0, 0, 0.85);
+    color: white;
     border-radius: 8px;
-    border-left: 5px solid var(--success-color);
-}
-#statusControl.small h2, 
-#statusControl.small #driverNameInput, 
-#statusControl.small .row { 
-    display: none; 
-}
-#statusControl.small #driverInfo { 
-    font-size: 0.9em; 
-    margin-bottom: 0; 
+    font-weight: bold;
+    font-size: 0.9em;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: background-color 0.3s;
 }
 
-/* Thanh điều khiển Tắt Online cố định dưới cùng */
-#offlineControlBar {
+/* 2. Lớp phủ Điều khiển chính dưới cùng (Pull-up Overlay) */
+#mainControlOverlay {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 101;
-    background-color: rgba(0, 0, 0, 0.9);
-    padding: 10px 15px;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
-    display: none; /* Mặc định ẩn */
-    text-align: center;
-}
-#offlineControlBar .btn-danger {
-    width: 100%;
-    max-width: 300px;
-    margin: 0 auto;
-    display: block;
-}
-
-
-/* Cuốc xe mới đến (New Ride Request) */
-.new-request-card {
-    background-color: rgba(0, 0, 0, 0.85); /* Nền đen mờ */
-    color: white;
+    z-index: 500;
+    background-color: var(--card-bg);
     padding: 15px;
-    border-radius: 10px;
-    box-shadow: var(--shadow);
-    margin-bottom: 10px;
-    border-left: 5px solid #ffc107; /* Màu cảnh báo */
-    max-width: 350px;
-    transition: all 0.2s;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
+    transition: transform 0.3s ease-out;
+    max-height: 80vh; 
+    overflow-y: auto;
 }
-/* ... (Giữ nguyên các style khác của .new-request-card) ... */
 
-/* Lớp phủ cuốc xe đang chạy (Active Ride) */
-#activeRideOverlay {
-    bottom: 15px;
-    left: 15px;
-    right: 15px;
+/* Mặc định: Hiển thị một phần (chỉ đủ chỗ cho các nút Online/Offline hoặc tiêu đề) */
+#mainControlOverlay.default-view {
+    /* Giá trị này là chiều cao của phần điều khiển tối thiểu (ví dụ: 100px) */
+    transform: translateY(calc(100% - 120px)); 
+}
+
+/* Trạng thái mở rộng (hiển thị chi tiết chuyến đi) */
+#mainControlOverlay.expanded-view {
+    transform: translateY(0);
+}
+
+/* 3. Card thông báo Cuốc xe mới đến (Nằm trên Overlay chính) */
+#newRequestCard {
+    position: absolute;
+    top: -10px; /* Vị trí nhô ra khỏi mép trên của overlay */
+    left: 50%;
+    transform: translate(-50%, -100%); /* Đẩy lên trên và căn giữa */
+    background-color: #ffc107; 
+    color: #333;
+    padding: 12px 20px;
     border-radius: 12px;
+    box-shadow: var(--shadow);
+    z-index: 600; 
+    width: 90%;
+    max-width: 400px;
+    display: none; /* Mặc định ẩn */
+}
+#newRequestCard h3 { margin: 0 0 5px 0; font-size: 1em; }
+
+
+/* --- NGƯỜI DÙNG (RIDER) CÁC LỚP PHỦ --- */
+
+/* Lớp phủ nhập liệu/thông tin (Nằm ở đáy) */
+#controlsOverlay.overlay-card {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background-color: var(--card-bg);
     padding: 15px;
-    max-width: 450px;
-    margin: 0 auto;
-}
-/* ... (Giữ nguyên các style khác của #activeRideOverlay) ... */
-
-/* --- FORM ELEMENTS CHUNG --- */
-input, select {
-  padding: 10px;
-  margin: 6px 0 10px 0;
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #ced4da;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 0.2s;
-}
-/* ... (Giữ nguyên các style khác của input/select) ... */
-
-/* --- BUTTONS CHUNG --- */
-.btn {
-  padding: 12px; 
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s;
-  text-align: center;
-  font-size: 1em;
-}
-/* ... (Giữ nguyên các style khác của buttons) ... */
-
-.row {
-  display: flex;
-  gap: 10px;
-  margin: 10px 0;
+    border-radius: 12px 12px 0 0; 
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.col {
-  flex: 1;
-}
-
-/* --- TOAST/FEEDBACK (RIDER) --- */
+/* Toast/Feedback (Nằm phía trên Rider Controls) */
 #toast-message {
     position: fixed;
-    bottom: 20px;
+    bottom: 200px; /* Vị trí cao hơn Overlay nhập liệu */
     left: 50%;
     transform: translateX(-50%);
     background-color: #343a40;
@@ -196,6 +137,54 @@ input, select {
 }
 #toast-message.show {
     opacity: 1;
-    transform: translateX(-50%) translateY(-20px); /* Nhấc lên một chút */
+    transform: translateX(-50%) translateY(-20px); 
 }
-/* ... (Giữ nguyên các style khác của autocomplete/location) ... */
+
+/* Icon Spinner cho Rider */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.spinner {
+    display: inline-block;
+    animation: spin 1.2s linear infinite;
+    margin-right: 5px;
+    font-size: 1.1em;
+}
+
+
+/* --- CHUNG (Cả Driver và Rider) --- */
+.row {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0;
+}
+.col {
+  flex: 1;
+}
+/* ... (Giữ nguyên các styles cho input, btn, request-actions, driver-icon...) */
+input, select {
+  padding: 10px;
+  margin: 6px 0 10px 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  font-size: 16px;
+}
+.btn {
+  padding: 12px; 
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
+  text-align: center;
+  font-size: 1em;
+}
+.btn-success{ background-color: var(--success-color); color: white; }
+.btn-danger{ background-color: var(--danger-color); color: white; }
+.btn-primary{ background-color: var(--primary-color); color: white; }
+.btn-accept{ background-color: var(--accept-color); color: white; }
+.btn-complete{ background-color: var(--complete-color); color: white; }
+.btn-disabled{ background:#eee; color:#999; cursor:not-allowed }
