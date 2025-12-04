@@ -119,8 +119,6 @@
         }
     }
     
-    // --- BẮT ĐẦU SỬA LỖI ẨN NHANH ---
-
     // 1. Chỉ cho phép TOGGLE khi click vào TITLE
     mainControlOverlay.addEventListener('click', (e) => {
         // Chỉ toggle nếu click vào TIÊU ĐỀ ('overlayTitle')
@@ -144,8 +142,6 @@
         }
     });
     
-    // --- KẾT THÚC SỬA LỖI ẨN NHANH ---
-
     toggleControlOverlay('expanded'); // Mặc định mở rộng để thấy nút Online
 
     // === HÀM PHÁT ÂM THANH VÀ RUNG ===
@@ -313,7 +309,7 @@
         
         // 1. HIỂN THỊ CUỐC MỚI (NEW REQUEST CARD)
         if (isFindingAndNear) {
-            // **FIX LOGIC:** Nếu đã có cuốc đang hoạt động, bỏ qua cuốc mới đang tìm
+            // Nếu đã có cuốc đang hoạt động, bỏ qua cuốc mới đang tìm
             const activeRideId = Object.keys(shownRides).find(id => shownRides[id].accepted === true);
             if (activeRideId) return; 
             
@@ -323,8 +319,6 @@
                 createRequestCard(rideId, rideObj, d);
                 notifyNewRide(); // Chỉ gọi notify khi thực sự tạo card mới
             } else if (findingRideId !== rideId) {
-                 // Nếu có cuốc khác đang chờ, nhưng cuốc này gần hơn, thay thế và notify
-                 // Bỏ qua cho đơn giản, chỉ xử lý cuốc đầu tiên đến
                  return;
             }
 
@@ -337,7 +331,9 @@
         
         // 2. HIỂN THỊ CUỐC ĐANG HOẠT ĐỘNG (ACTIVE RIDE CONTENT)
         else if (isAcceptedByMe) {
-            if (!shownRides[rideId] || shownRides[rideId].accepted === false) {
+            const isNewActiveRide = !shownRides[rideId] || shownRides[rideId].accepted === false;
+
+            if (isNewActiveRide) {
                 // Lần đầu tiên nhận cuốc
                 createActiveRideUI(rideId, rideObj, d);
             }
@@ -347,8 +343,12 @@
             offlineOnlineControls.style.display = 'none';
             activeRideContent.style.display = 'block';
             document.getElementById('overlayTitle').innerText = `Cuốc đang chạy #${rideId.slice(-4)}`;
-            toggleControlOverlay('default'); // Mặc định thu nhỏ (ưu tiên bản đồ)
             newRequestCard.style.display = 'none';
+
+            // **FIX HERE:** Mở rộng Overlay MỘT LẦN để tài xế xem chi tiết cuốc xe mới chấp nhận
+            if (isNewActiveRide) {
+                 toggleControlOverlay('expanded');
+            }
         } 
         
         // 3. XÓA NẾU KHÔNG CÒN LIÊN QUAN
@@ -547,6 +547,7 @@
           acceptedAt: Date.now()
         });
         // Sau khi update thành công, onChildChanged sẽ kích hoạt checkAndShowRide và vẽ UI mới
+        // checkAndShowRide sẽ tự động mở rộng Overlay nếu đây là cuốc mới được chấp nhận
       }, { onlyOnce: true });
     }
     async function completeRide(rideId) {
