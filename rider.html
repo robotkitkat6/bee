@@ -24,7 +24,7 @@
     <div id="map"></div>
 
     <div id="controlsOverlay" class="overlay-card">
-        <h2 style="margin: 0 0 10px 0; font-size: 1.2em; padding: 0; border: none;">Nhập điểm đón/đến</h2>
+        <h2 style="margin: 0 0 10px 0; font-size: 1.2em; padding: 0; border: none;">Đặt chuyến</h2>
         
         <label>Điểm đón 
             <button id="currentLocationBtn" class="current-location-btn">
@@ -51,7 +51,7 @@
         <div id="info" style="margin: 10px 0; font-size: 0.95em;"></div>
 
         <div class="row">
-            <button id="estimateBtn" class="col btn btn-primary">Ước tính & Hiển thị tuyến</button>
+            <button id="estimateBtn" class="col btn btn-primary">Ước tính & Tuyến</button>
             <button id="requestBtn" class="col btn btn-success" disabled>GỌI XE</button>
         </div>
         <button id="cancelBtn" class="col btn btn-danger" style="display:none; margin-top: 5px;" disabled>HỦY CHUYẾN</button>
@@ -75,7 +75,7 @@
       projectId: "robotkitkat6-bee",
       storageBucket: "robotkitkat6-bee.firebasestorage.app",
       messagingSenderId: "117130770804",
-      appId: "1:117130770804:web:4827cc61a7c9df99549421",
+      appId: "1:117130770804:web:4827cc61a7c99df99549421",
       measurementId: "G-WMKP4GT930"
     };
 
@@ -114,9 +114,7 @@
     function showToast(message, duration = 3000) {
         toastDiv.textContent = message;
         toastDiv.style.display = 'block';
-        setTimeout(() => {
-            toastDiv.classList.add('show');
-        }, 10); // Đảm bảo chuyển động
+        toastDiv.classList.add('show');
         
         setTimeout(() => {
             toastDiv.classList.remove('show');
@@ -127,7 +125,7 @@
     }
     // ==================
 
-    // ... (Giữ nguyên logic Geolocation, ReverseGeocode, Autosuggest, DriverListener) ...
+    // ... (Giữ nguyên logic Geolocation, ReverseGeocode, Autosuggest) ...
     async function reverseGeocode(lat, lng) {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=vi`;
         const res = await fetch(url);
@@ -157,14 +155,14 @@
                 const result = await reverseGeocode(lat, lng);
                 document.getElementById('from').value = result.display;
                 selectedFromCoord = { lat, lng };
-                infoDiv.innerHTML = `<div>Đã lấy vị trí hiện tại: ${result.display.split(',').slice(0, 3).join(',')}</div>`;
+                infoDiv.innerHTML = `<div style="color:var(--success-color);">Đã lấy vị trí hiện tại: ${result.display.split(',').slice(0, 3).join(',')}</div>`;
             } catch(e) {
-                 infoDiv.innerHTML = `<div>Lỗi lấy địa chỉ: ${e.message}</div>`;
+                 infoDiv.innerHTML = `<div style="color:var(--danger-color);">Lỗi lấy địa chỉ: ${e.message}</div>`;
             } finally {
                 document.getElementById('currentLocationBtn').disabled = false;
             }
         }, (error) => {
-            infoDiv.innerHTML = `<div>Lỗi Định vị: ${error.message}</div>`;
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Lỗi Định vị: ${error.message}</div>`;
             document.getElementById('currentLocationBtn').disabled = false;
         }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
     });
@@ -177,7 +175,7 @@
         };
     };
     async function geocode(q) {
-      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=10&accept-language=vi';
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=10&countrycodes=vn&accept-language=vi';
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
       const arr = await res.json();
       if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
@@ -255,7 +253,6 @@
     initDriverListener();
     // ==========================================================
     
-    // ... (Giữ nguyên showRoute, displayInfo) ...
     function showRoute(fromCoords, toCoords) {
       if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
       routingControl = L.Routing.control({
@@ -308,7 +305,6 @@
       `;
     }
     
-    // SỬA: Cập nhật hàm lắng nghe để dùng Toast
     function listenForAcceptance(rideId) {
         const rideRef = ref(db, 'rides/' + rideId);
         onValue(rideRef, (snap) => {
@@ -327,10 +323,10 @@
             const driverName = ride.driverName || 'Tài xế';
 
             if (ride.status === 'accepted') {
-                showToast(`✅ Tài xế ${driverName} đã nhận cuốc! Đang đến đón bạn.`, 8000);
+                showToast(`✅ Tài xế ${driverName.split('-')[0].trim()} đã nhận cuốc! Đang đến đón bạn.`, 8000);
                 infoDiv.innerHTML = `<div style="color:var(--primary-color);">Tài xế <b>${driverName}</b> đang đến đón bạn.</div>`;
             } else if (ride.status === 'onTrip') {
-                showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName}!`, 8000);
+                showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName.split('-')[0].trim()}!`, 8000);
                 infoDiv.innerHTML = `<div style="color:var(--success-color);">Bạn đang trên đường đến điểm đến.</div>`;
             } else if (ride.status === 'finding') {
                 showToast('🔍 Đang tìm tài xế gần bạn...');
@@ -383,7 +379,6 @@
       }
     });
 
-    // Button: Request (Giữ nguyên logic)
     requestBtn.addEventListener('click', async () => {
       if (!lastRouteSummary || !lastFromCoords || !lastToCoords) {
         return alert('Vui lòng nhấn "Ước tính & Hiển thị tuyến" trước và đảm bảo tìm thấy tuyến đường.');
@@ -427,7 +422,6 @@
       }
     });
 
-    // NÚT HỦY CHUYẾN
     cancelBtn.addEventListener('click', async () => {
         if (!currentRideId) return;
 
