@@ -1,190 +1,139 @@
+/* Thêm các biến màu */
 :root {
-  --primary-color: #007bff; /* Màu chính (Blue) */
-  --secondary-color: #6c757d; /* Màu phụ */
-  --success-color: #28a745; /* Màu Thành công (Green) */
-  --danger-color: #dc3545; /* Màu Hủy/Lỗi (Red) */
-  --accept-color: #0b8; /* Màu Nhận cuốc */
-  --complete-color: #28a; /* Màu Hoàn thành */
-  --bg-color: #f8f9fa; /* Màu nền */
-  --card-bg: #ffffff; /* Màu nền card */
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Bóng đổ mạnh hơn */
+    --primary-color: #007bff; /* Blue */
+    --secondary-color: #6c757d; /* Gray */
+    --success-color: #28a745; /* Green */
+    --danger-color: #dc3545; /* Red */
+    --warning-color: #ffc107; /* Yellow/Warning */
+    --accept-color: #0b8; /* Green-blue */
+    --complete-color: #28a; /* Strong Blue */
 }
 
-/* --- BASE LAYOUT: MAP chiếm toàn bộ màn hình --- */
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  margin: 0;
-  padding: 0;
-  background-color: var(--bg-color);
-  overflow-x: hidden;
-}
-
-.map-page-container {
+/* Các lớp chung */
+.row {
     display: flex;
-    flex-direction: column;
-    height: 100vh; /* Quan trọng: Chiếm 100% chiều cao màn hình */
+    gap: 8px;
+}
+.col {
+    flex: 1;
+}
+
+/* 1. Thiết lập chung cho Map và Container */
+.map-page-container {
     position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
 }
-
 #map {
-  flex-grow: 1; 
-  z-index: 1; 
-  height: 100%; 
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+}
+.leaflet-container {
+    background: #f7f7f7;
 }
 
-h2 {
-  color: #343a40;
-  margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 1.2em;
-}
 
-/* --- TÀI XẾ (DRIVER) CÁC LỚP PHỦ --- */
-
-/* 1. Lớp phủ Trạng thái trên cùng (Góc phải) */
+/* 2. Trạng thái trên cùng bên phải */
 #topStatus {
     position: fixed;
-    top: 15px;
-    right: 15px;
-    z-index: 1000;
-    padding: 8px 12px;
+    top: 10px;
+    right: 10px;
     background-color: rgba(0, 0, 0, 0.85);
     color: white;
-    border-radius: 8px;
-    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 5px;
     font-size: 0.9em;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    transition: background-color 0.3s;
+    z-index: 500;
 }
 
-/* 2. Lớp phủ Điều khiển chính dưới cùng (Pull-up Overlay) */
+/* 3. Card thông báo Cuốc xe mới đến */
+#newRequestCard {
+    /* FIX CƠ BẢN: Neo cố định ở vị trí dễ nhìn */
+    position: fixed; 
+    top: 60px; /* Đặt dưới topStatus */
+    left: 50%;
+    transform: translateX(-50%); /* Căn giữa */
+    
+    background-color: var(--warning-color); 
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000; /* Đảm bảo nó nằm trên tất cả */
+    width: 90%;
+    max-width: 400px;
+    display: none; /* Mặc định ẩn */
+    text-align: center;
+}
+#newRequestCard h3 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    color: #333;
+}
+#newRequestCard .btn {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+/* 4. Bảng điều khiển chính dưới cùng */
 #mainControlOverlay {
     position: fixed;
     bottom: 0;
     left: 0;
-    right: 0;
-    z-index: 500;
-    background-color: var(--card-bg);
+    width: 100%;
+    max-height: 90vh;
+    background-color: white;
+    border-top-left-radius: 15px;
+    border-top-right-radius: 15px;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.2);
     padding: 15px;
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
     transition: transform 0.3s ease-out;
-    max-height: 80vh; 
+    z-index: 500;
     overflow-y: auto;
+    box-sizing: border-box;
 }
 
-/* Mặc định: Hiển thị một phần (chỉ đủ chỗ cho các nút Online/Offline hoặc tiêu đề) */
+/* Chế độ thu nhỏ (chỉ thấy phần dưới) */
 #mainControlOverlay.default-view {
-    /* Giá trị này là chiều cao của phần điều khiển tối thiểu (ví dụ: 100px) */
+    /* Hiện khoảng 120px từ dưới lên */
     transform: translateY(calc(100% - 120px)); 
 }
-
-/* Trạng thái mở rộng (hiển thị chi tiết chuyến đi) */
+/* Chế độ mở rộng */
 #mainControlOverlay.expanded-view {
     transform: translateY(0);
 }
 
-/* 3. Card thông báo Cuốc xe mới đến (Nằm trên Overlay chính) */
-#newRequestCard {
-    position: absolute;
-    top: -10px; /* Vị trí nhô ra khỏi mép trên của overlay */
-    left: 50%;
-    transform: translate(-50%, -100%); /* Đẩy lên trên và căn giữa */
-    background-color: #ffc107; 
-    color: #333;
-    padding: 12px 20px;
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    z-index: 600; 
-    width: 90%;
-    max-width: 400px;
-    display: none; /* Mặc định ẩn */
-}
-#newRequestCard h3 { margin: 0 0 5px 0; font-size: 1em; }
-
-
-/* --- NGƯỜI DÙNG (RIDER) CÁC LỚP PHỦ --- */
-
-/* Lớp phủ nhập liệu/thông tin (Nằm ở đáy) */
-#controlsOverlay.overlay-card {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background-color: var(--card-bg);
-    padding: 15px;
-    border-radius: 12px 12px 0 0; 
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* Toast/Feedback (Nằm phía trên Rider Controls) */
-#toast-message {
-    position: fixed;
-    bottom: 200px; /* Vị trí cao hơn Overlay nhập liệu */
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: #343a40;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 25px;
-    box-shadow: var(--shadow);
-    z-index: 2000;
-    transition: opacity 0.5s, transform 0.5s;
-    opacity: 0;
-    max-width: 90%;
-    text-align: center;
-}
-#toast-message.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(-20px); 
-}
-
-/* Icon Spinner cho Rider */
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-.spinner {
-    display: inline-block;
-    animation: spin 1.2s linear infinite;
-    margin-right: 5px;
-    font-size: 1.1em;
-}
-
-
-/* --- CHUNG (Cả Driver và Rider) --- */
-.row {
-  display: flex;
-  gap: 10px;
-  margin: 10px 0;
-}
-.col {
-  flex: 1;
-}
-/* ... (Giữ nguyên các styles cho input, btn, request-actions, driver-icon...) */
-input, select {
-  padding: 10px;
-  margin: 6px 0 10px 0;
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #ced4da;
-  border-radius: 8px;
-  font-size: 16px;
-}
+/* Các nút chung */
 .btn {
-  padding: 12px; 
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s;
-  text-align: center;
-  font-size: 1em;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    margin: 5px 0;
 }
-.btn-success{ background-color: var(--success-color); color: white; }
-.btn-danger{ background-color: var(--danger-color); color: white; }
-.btn-primary{ background-color: var(--primary-color); color: white; }
-.btn-accept{ background-color: var(--accept-color); color: white; }
-.btn-complete{ background-color: var(--complete-color); color: white; }
-.btn-disabled{ background:#eee; color:#999; cursor:not-allowed }
+.btn-accept {
+    background: var(--accept-color);
+    color: white;
+}
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+}
+.btn-secondary {
+    background: var(--secondary-color);
+    color: white;
+}
+.btn-success {
+    background: var(--success-color);
+    color: white;
+}
+.btn-danger {
+    background: var(--danger-color);
+    color: white;
+}
+.btn-complete {
+    background: var(--complete-color);
+    color: white;
+}
