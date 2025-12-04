@@ -80,11 +80,20 @@ input:focus, select:focus {
 .btn-complete { /* For driver.html */
   background-color: var(--info-color); 
   color: white;
-  margin-left: 8px;
 }
 .btn-complete:hover {
   background-color: #117a8b;
 }
+
+/* --- BỔ SUNG: NÚT HỦY CHUYẾN --- */
+.btn-danger {
+  background-color: var(--danger-color);
+  color: white;
+}
+.btn-danger:hover {
+  background-color: #bd2130;
+}
+/* -------------------------------- */
 
 .btn-disabled, button:disabled {
   background-color: #e9ecef !important;
