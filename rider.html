@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Rider — Đặt xe</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body{font-family:Arial;margin:0;padding:12px}
+    #map{height:50vh;margin-top:8px}
+    input, select, button{padding:8px;margin:6px 0;width:100%;box-sizing:border-box}
+    .row{display:flex;gap:8px}
+    .col{flex:1}
+  </style>
+</head>
+<body>
+  <h2>Đặt xe — Nhập địa chỉ</h2>
+
+  <label>Điểm đón</label>
+  <input id="from" placeholder="Ví dụ: 1 Phố A, Quận B" />
+
+  <label>Điểm đến</label>
+  <input id="to" placeholder="Ví dụ: 2 Phố X, Quận Y" />
+
+  <label>Chọn loại xe</label>
+  <select id="vehicle">
+    <option value="bike">Xe máy</option>
+    <option value="car">Ô tô</option>
+  </select>
+
+  <div class="row">
+    <button id="estimateBtn" class="col">Ước tính & Hiển thị tuyến</button>
+    <button id="requestBtn" class="col" disabled>Gọi xe (lưu)</button>
+  </div>
+
+  <div id="info"></div>
+  <div id="map"></div>
+
+  <!-- libs -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+
+  <!-- Firebase modular -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, push, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // ====== THAY BẰNG FIREBASE CONFIG CỦA BẠN ======
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "XXX",
+      appId: "XXX"
+    };
+    // =============================================
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Map init
+    const map = L.map('map').setView([10.762622, 106.660172], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let routingControl = null;
+    let lastRouteSummary = null; // {distance (m), duration (s)}
+
+    const infoDiv = document.getElementById('info');
+    const estimateBtn = document.getElementById('estimateBtn');
+    const requestBtn = document.getElementById('requestBtn');
+
+    // Pricing
+    const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
+    const DRIVER_MAX_DISTANCE_KM = 1000; // rider can create any length; driver filter is done on driver side (<=3km)
+
+    // Geocode via Nominatim
+    async function geocode(q) {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q);
+      const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+      const arr = await res.json();
+      if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
+      // return first result {lat, lon, display_name}
+      return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
+    }
+
+    // Estimate route using Leaflet Routing Machine (OSRM public)
+    function showRoute(fromCoords, toCoords) {
+      if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
+      routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(fromCoords.lat, fromCoords.lng),
+          L.latLng(toCoords.lat, toCoords.lng)
+        ],
+        router: L.Routing.osrmv1({serviceUrl: 'https://router.project-osrm.org/route/v1'}),
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        showAlternatives: false
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e) {
+        const route = e.routes[0];
+        lastRouteSummary = { distance: route.summary.totalDistance, duration: route.summary.totalTime };
+        displayInfo();
+        requestBtn.disabled = false;
+      });
+    }
+
+    function displayInfo() {
+      if (!lastRouteSummary) return;
+      const km = (lastRouteSummary.distance / 1000);
+      const mins = Math.round(lastRouteSummary.duration / 60);
+      const vehicle = document.getElementById('vehicle').value;
+      let priceCalc = 0;
+      if (vehicle === 'bike') {
+        priceCalc = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
+      } else {
+        priceCalc = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
+      }
+      infoDiv.innerHTML = `
+        <div><b>Khoảng cách:</b> ${km.toFixed(2)} km</div>
+        <div><b>Thời gian dự kiến:</b> ${mins} phút</div>
+        <div><b>Loại xe:</b> ${vehicle === 'bike' ? 'Xe máy' : 'Ô tô'}</div>
+        <div><b>Giá ước tính:</b> ${priceCalc.toLocaleString()} đ</div>
+      `;
+    }
+
+    // Button: Estimate
+    estimateBtn.addEventListener('click', async () => {
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
+      if (!from || !to) return alert('Nhập điểm đón và điểm đến');
+      try {
+        estimateBtn.disabled = true;
+        infoDiv.innerHTML = 'Đang tìm địa chỉ...';
+        const fromCoords = await geocode(from);
+        const toCoords = await geocode(to);
+        showRoute(fromCoords, toCoords);
+      } catch (e) {
+        alert(e.message || 'Lỗi khi geocode');
+      } finally {
+        estimateBtn.disabled = false;
+      }
+    });
+
+    // Button: Request (push ride into /rides)
+    requestBtn.addEventListener('click', async () => {
+      if (!lastRouteSummary) return alert('Chưa có tuyến');
+      const from = document.getElementById('from').value.trim();
+      const to = document.getElementById('to').value.trim();
+      const vehicle = document.getElementById('vehicle').value;
+      const km = lastRouteSummary.distance / 1000;
+      const mins = Math.round(lastRouteSummary.duration / 60);
+
+      // calculate fare
+      let fare = 0;
+      if (vehicle === 'bike') fare = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
+      else fare = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
+
+      // create ride object
+      const ride = {
+        createdAt: Date.now(),
+        status: 'finding',
+        fromText: from,
+        toText: to,
+        from: { lat: routingControl.getWaypoints()[0].lat, lng: routingControl.getWaypoints()[0].lng },
+        to: { lat: routingControl.getWaypoints()[1].lat, lng: routingControl.getWaypoints()[1].lng },
+        distance_m: lastRouteSummary.distance,
+        duration_s: lastRouteSummary.duration,
+        distance_km: km,
+        duration_min: mins,
+        fare: fare,
+        vehicle: vehicle
+      };
+
+      try {
+        const ridesRef = ref(db, 'rides');
+        const newRef = await push(ridesRef, ride);
+        infoDiv.innerHTML += `<div style="color:green">Yêu cầu đã gửi (ID: ${newRef.key}). Đang tìm tài xế...</div>`;
+        requestBtn.disabled = true;
+      } catch (e) {
+        alert('Lỗi gửi yêu cầu: ' + (e.message || e));
+      }
+    });
+
+  </script>
+</body>
+</html>
