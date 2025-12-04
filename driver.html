@@ -15,11 +15,11 @@
         Chưa Online
     </div>
     
+    <div id="newRequestCard">
+        </div>
+
     <div id="mainControlOverlay" class="default-view">
         
-        <div id="newRequestCard">
-            </div>
-
         <div style="text-align: center; margin-bottom: 10px;">
             <div id="overlayTitle" style="font-weight: bold; color: var(--primary-color);">Bảng Điều Khiển</div>
         </div>
@@ -120,11 +120,8 @@
     }
     // Gán sự kiện cho overlay (Ví dụ: click để kéo lên/xuống)
     mainControlOverlay.addEventListener('click', (e) => {
-        // Chỉ toggle nếu click vào phần trên cùng (ví dụ: title) và không phải nút
-        if (e.target.id === 'overlayTitle' || e.target === mainControlOverlay || e.target.closest('#newRequestCard')) { 
-            // Bỏ qua khi click vào thẻ thông báo
-            if (e.target.closest('#newRequestCard')) return; 
-
+        // Chỉ toggle nếu click vào phần trên cùng (ví dụ: title) 
+        if (e.target.id === 'overlayTitle' || e.target === mainControlOverlay) { 
             if (mainControlOverlay.classList.contains('default-view')) {
                 toggleControlOverlay('expanded');
             } else {
@@ -299,17 +296,23 @@
         
         // 1. HIỂN THỊ CUỐC MỚI (NEW REQUEST CARD)
         if (isFindingAndNear) {
-            // Chỉ hiện 1 cuốc mới đang chờ
-            if (Object.keys(shownRides).length > 0) return; 
-            // Nếu cuốc này đã tồn tại trong shownRides và đã được chấp nhận, bỏ qua (nhưng logic này đã được xử lý bởi isAcceptedByMe)
-            if (shownRides[rideId] && shownRides[rideId].accepted) return; 
-
-            createRequestCard(rideId, rideObj, d);
-            notifyNewRide(); 
+            // **FIX LOGIC:** Nếu đã có cuốc đang hoạt động, bỏ qua cuốc mới đang tìm
+            const activeRideId = Object.keys(shownRides).find(id => shownRides[id].accepted === true);
+            if (activeRideId) return; 
             
+            // Chỉ hiện 1 cuốc mới đang chờ (nếu có cuốc đang chờ khác, không gọi lại notify)
+            const findingRideId = Object.keys(shownRides).find(id => shownRides[id].currentStatus === 'finding');
+            if (!findingRideId) {
+                createRequestCard(rideId, rideObj, d);
+                notifyNewRide(); // Chỉ gọi notify khi thực sự tạo card mới
+            } else if (findingRideId !== rideId) {
+                 // Nếu có cuốc khác đang chờ, nhưng cuốc này gần hơn, thay thế và notify
+                 // Bỏ qua cho đơn giản, chỉ xử lý cuốc đầu tiên đến
+                 return;
+            }
+
             // Ẩn nội dung chính, chỉ để nút Online/Offline nếu cần
             activeRideContent.style.display = 'none';
-            // Đảm bảo chỉ hiển thị các nút Online/Offline/Name nếu chưa có cuốc hoạt động
             offlineOnlineControls.style.display = 'block'; 
             document.getElementById('overlayTitle').innerText = `Chờ chấp nhận Cuốc #${rideId.slice(-4)}`;
             toggleControlOverlay('default'); // Giữ nhỏ overlay chính
@@ -317,7 +320,7 @@
         
         // 2. HIỂN THỊ CUỐC ĐANG HOẠT ĐỘNG (ACTIVE RIDE CONTENT)
         else if (isAcceptedByMe) {
-            if (!shownRides[rideId]) {
+            if (!shownRides[rideId] || shownRides[rideId].accepted === false) {
                 // Lần đầu tiên nhận cuốc
                 createActiveRideUI(rideId, rideObj, d);
             }
@@ -341,9 +344,10 @@
     function createRequestCard(rideId, rideObj, distKm) {
         if (shownRides[rideId]) return;
 
-        // **Fix: Đảm bảo ẩn tất cả các nội dung khác và chỉ hiện card thông báo.**
-        activeRideContent.style.display = 'none';
-        offlineOnlineControls.style.display = 'block'; // Hiển thị để nút Offline vẫn hoạt động
+        // Xóa tất cả các cuốc đang chờ khác trước khi hiển thị cuốc mới
+        Object.keys(shownRides).forEach(id => {
+            if (shownRides[id].accepted === false) removeRideFromUI(id);
+        });
         
         const pickup = `${rideObj.fromText || '—'}`;
         const dest = `${rideObj.toText || '—'}`;
@@ -367,7 +371,7 @@
         document.getElementById(`acceptBtn_${rideId}`).onclick = () => acceptRide(rideId, rideObj);
         document.getElementById(`rejectBtn_${rideId}`).onclick = () => removeRideFromUI(rideId);
         
-        // Chỉ lưu cuốc mới vào shownRides để chặn các cuốc khác đến
+        // Chỉ lưu cuốc mới vào shownRides
         shownRides[rideId] = { el: newRequestCard, routeControl: null, accepted: false, currentStatus: 'finding' };
     }
     
@@ -382,7 +386,7 @@
              if (shownRides[rideId].routeControl) map.removeControl(shownRides[rideId].routeControl);
              // Xóa nếu nó là thẻ chờ và thay thế bằng thẻ hoạt động
              if (!shownRides[rideId].accepted) delete shownRides[rideId];
-             else return;
+             else return; // Đã là cuốc hoạt động, không tạo lại
         }
 
         const pickup = `${rideObj.fromText || '—'}`;
@@ -405,7 +409,7 @@
     // --- HÀM CẬP NHẬT UI CHO CUỐC ĐANG HOẠT ĐỘNG ---
     function updateActiveRideUI(rideId, rideObj, distKm) {
         const s = shownRides[rideId];
-        if (!s) return; // Không tìm thấy cuốc hoạt động
+        if (!s || s.accepted === false) return; // Không tìm thấy cuốc hoạt động
 
         // Nếu status không đổi và đã vẽ route, không cần làm gì
         if (s.currentStatus === rideObj.status && s.routeControl) return; 
@@ -468,11 +472,10 @@
         }
         
         // Chỉ xóa item trong shownRides nếu nó không phải cuốc đang hoạt động của mình
-        if (shownRides[rideId].accepted === false || shownRides[rideId].driverId === DRIVER_ID) {
-            delete shownRides[rideId];
+        if (shownRides[rideId].accepted === false || (shownRides[rideId].accepted === true && rideId === Object.keys(shownRides).find(id => shownRides[id].accepted === true))) {
+             delete shownRides[rideId];
         } else {
-             // Nếu là cuốc của driver khác, không xóa khỏi shownRides trừ khi nó là cuốc duy nhất đang chờ
-             // Do logic checkAndShowRide (Object.keys(shownRides).length > 0) đã ngăn chặn
+             return; // Không xóa cuốc đang hoạt động
         }
         
         newRequestCard.style.display = 'none';
