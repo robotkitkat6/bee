@@ -32,7 +32,7 @@
       onValue, update, push
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // ====== FIREBASE CONFIG ĐÃ ĐỒNG BỘ ======
+    // Cấu hình Firebase (Đã đồng bộ)
     const firebaseConfig = {
       apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
       authDomain: "robotkitkat6-bee.firebaseapp.com",
@@ -43,7 +43,6 @@
       appId: "1:117130770804:web:4827cc61a7c9df99549421",
       measurementId: "G-WMKP4GT930"
     };
-    // =============================================
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -144,13 +143,16 @@
         <div><b>Điểm đón:</b> ${pickup}</div>
         <div><b>Điểm đến:</b> ${dest}</div>
         <div><b>Giá ước tính:</b> ${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}</div>
+        <div class="row request-actions"></div>
       `;
+      
+      const actionsDiv = el.querySelector('.request-actions');
       const acceptBtn = document.createElement('button');
       acceptBtn.className = 'btn btn-accept'; acceptBtn.innerText = 'Nhận cuốc';
+      acceptBtn.style.flex = 1;
       acceptBtn.onclick = () => acceptRide(rideId, rideObj, el);
-      el.appendChild(acceptBtn);
+      actionsDiv.appendChild(acceptBtn);
 
-      // after accept, we'll show "Hoàn thành" instead of accept
       requestsDiv.prepend(el);
       shownRides[rideId] = { el, routeControl: null, accepted:false };
     }
@@ -162,10 +164,25 @@
       if (s.el) s.el.remove();
       delete shownRides[rideId];
     }
+    
+    // --- HÀM MỚI: HỦY CUỐC (DRIVER) ---
+    async function cancelRide(rideId, el) {
+        if (!confirm("Bạn chắc chắn muốn hủy cuốc xe đã nhận này? Hành động này sẽ thông báo cho khách.")) return;
+
+        try {
+            const rideRef = ref(db, 'rides/' + rideId);
+            await remove(rideRef); // Xóa khỏi Firebase
+
+            alert('Đã hủy cuốc xe: ' + rideId);
+            removeRideFromUI(rideId);
+        } catch (e) {
+            alert('Lỗi hủy chuyến: ' + (e.message || e));
+        }
+    }
+    // -----------------------------------
 
     // Accept ride
     async function acceptRide(rideId, rideObj, el) {
-      // check again if ride still finding
       const rideRef = ref(db, 'rides/' + rideId);
       onValue(rideRef, async (snap) => {
         const current = snap.val();
@@ -184,10 +201,34 @@
         });
 
         // change UI
-        const btn = el.querySelector('button');
-        btn.innerText = 'Đang chạy đến điểm đón';
-        btn.disabled = true;
-        btn.className = 'btn btn-disabled';
+        const actionsDiv = el.querySelector('.request-actions');
+        actionsDiv.innerHTML = ''; // Clear old button
+
+        // 1. Nút thông báo
+        const statusBtn = document.createElement('button');
+        statusBtn.innerText = 'Đang chạy đến điểm đón';
+        statusBtn.disabled = true;
+        statusBtn.className = 'btn btn-disabled';
+        statusBtn.style.flex = 1;
+
+        // 2. Nút Hoàn thành
+        const completeBtn = document.createElement('button');
+        completeBtn.className = 'btn btn-complete';
+        completeBtn.innerText = 'Hoàn thành';
+        completeBtn.style.flex = 1;
+        completeBtn.onclick = () => completeRide(rideId, rideObj, el);
+
+        // 3. Nút Hủy cuốc (NEW)
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn btn-danger';
+        cancelBtn.innerText = 'Hủy cuốc';
+        cancelBtn.style.flex = 1;
+        cancelBtn.onclick = () => cancelRide(rideId, el);
+
+        // Thêm các nút vào hàng mới
+        actionsDiv.appendChild(statusBtn);
+        actionsDiv.appendChild(completeBtn);
+        actionsDiv.appendChild(cancelBtn);
 
         // show route: from driver -> pickup -> dest
         try {
@@ -199,7 +240,6 @@
           const pickup = [rideObj.from.lat, rideObj.from.lng];
           const dest = rideObj.to ? [rideObj.to.lat, rideObj.to.lng] : null;
 
-          // route control: driver -> pickup -> dest
           const waypoints = [ L.latLng(lastPos.lat, lastPos.lng), L.latLng(pickup[0], pickup[1]) ];
           if (dest) waypoints.push(L.latLng(dest[0], dest[1]));
 
@@ -212,15 +252,6 @@
           }).addTo(map);
 
           shownRides[rideId].routeControl = routeControl;
-
-          // add Complete button
-          const completeBtn = document.createElement('button');
-          completeBtn.className = 'btn btn-complete';
-          completeBtn.innerText = 'Hoàn thành cuốc';
-          completeBtn.style.marginLeft = '8px';
-          completeBtn.onclick = () => completeRide(rideId, rideObj, el);
-          el.appendChild(completeBtn);
-
           shownRides[rideId].accepted = true;
         } catch(e) { console.warn(e); }
 
@@ -305,12 +336,6 @@
     window.addEventListener('beforeunload', async () => {
       if (online) { await setDriverOffline(); }
     });
-
-    // small periodic refresh
-    setInterval(() => {
-      if (online && lastPos) refreshNearbyRides();
-    }, 5000);
-
   </script>
 </body>
 </html>
