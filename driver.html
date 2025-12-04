@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Driver — Nhận cuốc</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body{font-family:Arial;margin:0;padding:12px}
+    #map{height:52vh;margin-top:8px}
+    input,button{padding:8px;margin:6px 0;width:100%;box-sizing:border-box}
+    .request{border:1px solid #ddd;padding:8px;margin:8px 0;border-radius:6px}
+    .btn{padding:8px;border:none;border-radius:6px;cursor:pointer}
+    .btn-accept{background:#0b8;color:#042}
+    .btn-complete{background:#28a;color:white}
+    .btn-disabled{background:#eee;color:#999;cursor:not-allowed}
+  </style>
+</head>
+<body>
+  <h2>Driver — Bật Online</h2>
+  <input id="driverName" placeholder="Tên tài xế (ví dụ: Tài xế A)"/>
+  <div style="display:flex;gap:8px;">
+    <button id="goOnline" class="btn">Bật Online</button>
+    <button id="goOffline" class="btn" style="display:none">Tắt Online</button>
+  </div>
+
+  <div id="driverInfo" style="margin:6px 0;color:#555">Chưa online</div>
+
+  <h3>Cuốc gần bạn (≤ 3 km)</h3>
+  <div id="requests"></div>
+
+  <div id="map"></div>
+
+  <!-- libs -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <!-- Firebase modular -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getDatabase, ref, set, remove, onChildAdded, onChildChanged,
+      onValue, update, push
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // ====== THAY BẰNG FIREBASE CONFIG CỦA BẠN ======
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "XXX",
+      appId: "XXX"
+    };
+    // =============================================
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Map init
+    const map = L.map('map').setView([10.762622, 106.660172], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let driverMarker = L.marker([10.762622, 106.660172], { draggable:true }).addTo(map);
+    driverMarker.bindPopup('Bạn (tài xế)').openPopup();
+
+    const DRIVER_ID = 'driver_' + Date.now() + '_' + Math.floor(Math.random()*9999);
+    let lastPos = null;
+    let online = false;
+    let watchId = null;
+    const requestsDiv = document.getElementById('requests');
+    let shownRides = {}; // rideId -> dom
+
+    // Helpers for DB
+    const driversRef = ref(db, 'drivers');
+    const ridesRef = ref(db, 'rides');
+
+    async function setDriverOnline(name, lat, lng) {
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await set(dRef, { id: DRIVER_ID, name, lat, lng, online: true, updatedAt: Date.now() });
+      document.getElementById('driverInfo').innerText = 'Online như: ' + name;
+    }
+    async function setDriverOffline() {
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await remove(dRef).catch(()=>{});
+      document.getElementById('driverInfo').innerText = 'Bạn đã offline';
+    }
+    async function updateDriverLocation(lat, lng) {
+      lastPos = { lat, lng };
+      driverMarker.setLatLng([lat,lng]);
+      map.panTo([lat,lng]);
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await update(dRef, { lat, lng, updatedAt: Date.now() }).catch(()=>{});
+    }
+
+    // Geolocation
+    function startWatch() {
+      if (!navigator.geolocation) { alert('Trình duyệt không hỗ trợ định vị'); return; }
+      navigator.geolocation.getCurrentPosition(async (p) => {
+        await updateDriverLocation(p.coords.latitude, p.coords.longitude);
+      }, ()=>{}, { enableHighAccuracy:true });
+      watchId = navigator.geolocation.watchPosition(async (p) => {
+        await updateDriverLocation(p.coords.latitude, p.coords.longitude);
+        refreshNearbyRides(); // mỗi khi vị trí cập nhật -> kiểm tra lại rides
+      }, (err)=>console.warn(err), { enableHighAccuracy:true, maximumAge:2000, timeout:10000 });
+    }
+    function stopWatch() { if (watchId) navigator.geolocation.clearWatch(watchId); watchId = null; }
+
+    // Fetch rides once and on change: show only those with status 'finding' and distanceToPickup <= 3km
+    onChildAdded(ridesRef, (snap) => {
+      const ride = snap.val(); const rideId = snap.key;
+      if (!ride) return;
+      if (ride.status && ride.status !== 'finding') return;
+      if (!lastPos) return; // wait until driver has location
+      checkAndShowRide(rideId, ride);
+    });
+
+    onChildChanged(ridesRef, (snap) => {
+      const ride = snap.val(); const rideId = snap.key;
+      // if status changed away from finding, remove
+      if (!ride || (ride.status && ride.status !== 'finding')) {
+        removeRideFromUI(rideId);
+        return;
+      }
+      // else recalc and show/hide
+      if (lastPos) checkAndShowRide(rideId, ride);
+    });
+
+    // utility: check distance (turf, kilometers)
+    function checkAndShowRide(rideId, rideObj) {
+      if (!rideObj.from) return;
+      const driverPt = turf.point([lastPos.lng, lastPos.lat]);
+      const pickupPt = turf.point([rideObj.from.lng, rideObj.from.lat]);
+      const d = turf.distance(driverPt, pickupPt, { units: 'kilometers' });
+      if (d <= 3) {
+        // show if not shown
+        if (!shownRides[rideId]) createRideUI(rideId, rideObj, d);
+      } else {
+        removeRideFromUI(rideId);
+      }
+    }
+
+    function createRideUI(rideId, rideObj, distKm) {
+      const el = document.createElement('div');
+      el.className = 'request';
+      el.id = 'ride_' + rideId;
+      const pickup = `${rideObj.from.lat.toFixed(5)}, ${rideObj.from.lng.toFixed(5)}`;
+      const dest = rideObj.to ? `${rideObj.to.lat.toFixed(5)}, ${rideObj.to.lng.toFixed(5)}` : '—';
+      el.innerHTML = `
+        <div><b>ID:</b> ${rideId}</div>
+        <div><b>Loại:</b> ${rideObj.vehicle || '—'}</div>
+        <div><b>Cách bạn:</b> ${distKm.toFixed(2)} km</div>
+        <div><b>Điểm đón:</b> ${pickup}</div>
+        <div><b>Điểm đến:</b> ${dest}</div>
+        <div><b>Giá ước tính:</b> ${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}</div>
+      `;
+      const acceptBtn = document.createElement('button');
+      acceptBtn.className = 'btn btn-accept'; acceptBtn.innerText = 'Nhận cuốc';
+      acceptBtn.onclick = () => acceptRide(rideId, rideObj, el);
+      el.appendChild(acceptBtn);
+
+      // after accept, we'll show "Hoàn thành" instead of accept
+      requestsDiv.prepend(el);
+      shownRides[rideId] = { el, routeControl: null, accepted:false };
+    }
+
+    function removeRideFromUI(rideId) {
+      const s = shownRides[rideId];
+      if (!s) return;
+      if (s.routeControl) { try { map.removeControl(s.routeControl); } catch(e){} }
+      if (s.el) s.el.remove();
+      delete shownRides[rideId];
+    }
+
+    // Accept ride
+    async function acceptRide(rideId, rideObj, el) {
+      // check again if ride still finding
+      const rideRef = ref(db, 'rides/' + rideId);
+      onValue(rideRef, async (snap) => {
+        const current = snap.val();
+        if (!current) { alert('Cuốc đã bị hủy'); removeRideFromUI(rideId); return; }
+        if (current.status && current.status !== 'finding') { alert('Cuốc đã được nhận'); removeRideFromUI(rideId); return; }
+
+        // update ride -> accepted
+        const driverName = document.getElementById('driverName').value || ('Tài xế_' + DRIVER_ID.slice(-4));
+        await update(rideRef, {
+          status: 'accepted',
+          driverId: DRIVER_ID,
+          driverName,
+          driverLat: lastPos.lat,
+          driverLng: lastPos.lng,
+          acceptedAt: Date.now()
+        });
+
+        // change UI
+        const btn = el.querySelector('button');
+        btn.innerText = 'Đang chạy đến điểm đón';
+        btn.disabled = true;
+        btn.className = 'btn btn-disabled';
+
+        // show route: from driver -> pickup -> dest
+        try {
+          // remove others
+          Object.keys(shownRides).forEach(k => {
+            if (k !== rideId) removeRideFromUI(k);
+          });
+
+          const pickup = [rideObj.from.lat, rideObj.from.lng];
+          const dest = rideObj.to ? [rideObj.to.lat, rideObj.to.lng] : null;
+
+          // route control: driver -> pickup -> dest
+          const waypoints = [ L.latLng(lastPos.lat, lastPos.lng), L.latLng(pickup[0], pickup[1]) ];
+          if (dest) waypoints.push(L.latLng(dest[0], dest[1]));
+
+          const routeControl = L.Routing.control({
+            waypoints,
+            router: L.Routing.osrmv1({serviceUrl: 'https://router.project-osrm.org/route/v1'}),
+            fitSelectedRoutes: true,
+            addWaypoints: false,
+            showAlternatives: false
+          }).addTo(map);
+
+          shownRides[rideId].routeControl = routeControl;
+
+          // add Complete button
+          const completeBtn = document.createElement('button');
+          completeBtn.className = 'btn btn-complete';
+          completeBtn.innerText = 'Hoàn thành cuốc';
+          completeBtn.style.marginLeft = '8px';
+          completeBtn.onclick = () => completeRide(rideId, rideObj, el);
+          el.appendChild(completeBtn);
+
+          shownRides[rideId].accepted = true;
+        } catch(e) { console.warn(e); }
+
+      }, { onlyOnce: true });
+    }
+
+    // Complete ride: push to /history then remove ride
+    async function completeRide(rideId, rideObj, el) {
+      const rideRef = ref(db, 'rides/' + rideId);
+      onValue(rideRef, async (snap) => {
+        const current = snap.val();
+        if (!current) { alert('Cuốc không tồn tại'); removeRideFromUI(rideId); return; }
+
+        // create history entry
+        const historyRef = ref(db, 'history');
+        const entry = {
+          ...current,
+          completedAt: Date.now(),
+          completedBy: DRIVER_ID
+        };
+        await push(historyRef, entry);
+        // remove ride
+        await remove(rideRef).catch(()=>{});
+        alert('Đã hoàn thành cuốc: ' + rideId);
+        removeRideFromUI(rideId);
+      }, { onlyOnce: true });
+    }
+
+    // Refresh nearby rides (scan all rides)
+    function refreshNearbyRides() {
+      onValue(ridesRef, (snap) => {
+        const rides = snap.val() || {};
+        Object.keys(rides).forEach(rideId => {
+          const r = rides[rideId];
+          if (!lastPos) return;
+          if (!r || (r.status && r.status !== 'finding')) { removeRideFromUI(rideId); return; }
+          const driverPt = turf.point([lastPos.lng, lastPos.lat]);
+          const pickupPt = turf.point([r.from.lng, r.from.lat]);
+          const d = turf.distance(driverPt, pickupPt, { units: 'kilometers' });
+          if (d <= 3) {
+            if (!shownRides[rideId]) createRideUI(rideId, r, d);
+          } else removeRideFromUI(rideId);
+        });
+      }, { onlyOnce: true });
+    }
+
+    // Buttons
+    document.getElementById('goOnline').addEventListener('click', async () => {
+      const name = document.getElementById('driverName').value || ('Tài xế_' + DRIVER_ID.slice(-4));
+      online = true;
+      document.getElementById('goOnline').style.display = 'none';
+      document.getElementById('goOffline').style.display = 'inline-block';
+      document.getElementById('driverInfo').innerText = 'Kết nối...';
+      startWatch();
+      // give some time to fetch location then set driver online
+      setTimeout(async () => {
+        if (!lastPos) {
+          alert('Không lấy được vị trí — kiểm tra quyền truy cập vị trí');
+          return;
+        }
+        await setDriverOnline(name, lastPos.lat, lastPos.lng);
+        refreshNearbyRides();
+        document.getElementById('driverInfo').innerText = 'Online như: ' + name;
+      }, 900);
+    });
+
+    document.getElementById('goOffline').addEventListener('click', async () => {
+      online = false;
+      document.getElementById('goOnline').style.display = 'inline-block';
+      document.getElementById('goOffline').style.display = 'none';
+      stopWatch();
+      await setDriverOffline();
+      requestsDiv.innerHTML = '';
+    });
+
+    // on unload, set offline
+    window.addEventListener('beforeunload', async () => {
+      if (online) { await setDriverOffline(); }
+    });
+
+    // ensure lastPos updated function
+    async function setDriverOnline(name, lat, lng) {
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await set(dRef, { id: DRIVER_ID, name, lat, lng, online:true, updatedAt: Date.now() });
+    }
+    async function setDriverOffline() {
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await remove(dRef).catch(()=>{});
+    }
+    async function updateDriverLocation(lat, lng) {
+      lastPos = { lat, lng };
+      driverMarker.setLatLng([lat,lng]);
+      map.panTo([lat,lng]);
+      const dRef = ref(db, 'drivers/' + DRIVER_ID);
+      await update(dRef, { lat, lng, updatedAt: Date.now() }).catch(()=>{});
+    }
+
+    // small periodic refresh
+    setInterval(() => {
+      if (online && lastPos) refreshNearbyRides();
+    }, 5000);
+
+  </script>
+</body>
+</html>
