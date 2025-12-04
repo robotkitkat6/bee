@@ -26,6 +26,7 @@
     <button id="requestBtn" class="col btn btn-secondary" disabled>Gọi xe (lưu)</button>
     <button id="cancelBtn" class="col btn btn-danger" style="display:none;" disabled>Hủy chuyến</button>
   </div>
+
   <div id="info"></div>
   <div id="map"></div>
 
@@ -56,20 +57,20 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     let routingControl = null;
-    let lastRouteSummary = null; // {distance (m), duration (s)}
+    let lastRouteSummary = null; 
     let lastFromCoords = null; 
     let lastToCoords = null;   
-    let currentRideId = null; // BIẾN MỚI: Theo dõi ID chuyến đi hiện tại
+    let currentRideId = null; 
 
     const infoDiv = document.getElementById('info');
     const estimateBtn = document.getElementById('estimateBtn');
     const requestBtn = document.getElementById('requestBtn');
-    const cancelBtn = document.getElementById('cancelBtn'); // NÚT MỚI
+    const cancelBtn = document.getElementById('cancelBtn');
 
     // Pricing
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
 
-    // Geocode via Nominatim
+    // Geocode via Nominatim (Giữ nguyên)
     async function geocode(q) {
       const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q);
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
@@ -78,7 +79,7 @@
       return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
     }
 
-    // Estimate route using Leaflet Routing Machine (OSRM public)
+    // Estimate route using Leaflet Routing Machine (Giữ nguyên)
     function showRoute(fromCoords, toCoords) {
       if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
       routingControl = L.Routing.control({
@@ -126,7 +127,7 @@
       `;
     }
     
-    // HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE
+    // HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE (ĐÃ SỬA)
     function listenForAcceptance(rideId) {
         const rideRef = ref(db, 'rides/' + rideId);
         onValue(rideRef, (snap) => {
@@ -135,7 +136,7 @@
             if (!ride) {
                  // Cuốc xe đã bị hủy (bởi rider/driver) hoặc hoàn thành
                  if (currentRideId === rideId) {
-                     infoDiv.innerHTML = infoDiv.innerHTML.includes('✅') ? infoDiv.innerHTML : `<div style="color:var(--secondary-color); margin-top: 10px;">Cuốc xe đã kết thúc.</div>`;
+                     infoDiv.innerHTML = `<div style="color:var(--secondary-color); font-weight: bold; margin-top: 10px;">Cuốc xe đã kết thúc/bị hủy.</div>`;
                      cancelBtn.style.display = 'none';
                      requestBtn.disabled = false;
                      currentRideId = null;
@@ -149,17 +150,30 @@
                     <div style="color:var(--primary-color); font-weight: bold; font-size: 1.2em;">✅ TÀI XẾ ĐÃ NHẬN CUỐC!</div>
                     <div>Tài xế <b>${driverName}</b> đang đến đón bạn.</div>
                 `;
+            } else if (ride.status === 'onTrip') {
+                 // TRẠNG THÁI MỚI: ĐÃ ĐÓN KHÁCH
+                const driverName = ride.driverName || 'Tài xế';
+                infoDiv.innerHTML = `
+                    <div style="color:var(--success-color); font-weight: bold; font-size: 1.2em;">🚗 BẮT ĐẦU HÀNH TRÌNH!</div>
+                    <div>Bạn đang trên đường đến điểm đến cùng tài xế <b>${driverName}</b>.</div>
+                `;
             } else if (ride.status === 'finding') {
                 if (!infoDiv.innerHTML.includes('Đang tìm tài xế')) {
                     infoDiv.innerHTML += `<div style="color:var(--success-color); margin-top: 10px;">Yêu cầu đã gửi (ID: ${rideId}). Đang tìm tài xế...</div>`;
                 }
             }
+            // Luôn bật nút hủy nếu đang trong chuyến (finding/accepted/onTrip)
+            if (ride.status !== 'completed' && ride.status !== 'canceled') {
+                cancelBtn.style.display = 'inline-block';
+                cancelBtn.disabled = false;
+            }
+
         });
     }
 
+
     // Button: Estimate (Giữ nguyên)
     estimateBtn.addEventListener('click', async () => {
-      // Logic Geocode...
       const from = document.getElementById('from').value.trim();
       const to = document.getElementById('to').value.trim();
       if (!from || !to) return alert('Nhập điểm đón và điểm đến');
@@ -168,8 +182,7 @@
         requestBtn.disabled = true;
         infoDiv.innerHTML = 'Đang tìm địa chỉ...';
         
-        // ẨN NÚT HỦY KHI ƯỚC TÍNH LẠI
-        cancelBtn.style.display = 'none';
+        cancelBtn.style.display = 'none'; // Ẩn nút hủy khi ước tính lại
 
         const fromCoords = await geocode(from);
         const toCoords = await geocode(to);
@@ -229,10 +242,8 @@
         listenForAcceptance(rideId);
         
         requestBtn.disabled = true;
+        // Nút hủy sẽ được bật trong hàm listenForAcceptance
 
-        // HIỂN THỊ NÚT HỦY CHUYẾN
-        cancelBtn.style.display = 'inline-block';
-        cancelBtn.disabled = false;
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
       }
@@ -242,7 +253,14 @@
     cancelBtn.addEventListener('click', async () => {
         if (!currentRideId) return;
 
-        if (!confirm("Bạn chắc chắn muốn hủy chuyến này? Việc hủy có thể bị tính phí nếu tài xế đã nhận cuốc.")) return;
+        // Cảnh báo nếu chuyến đã được tài xế nhận
+        const isAccepted = infoDiv.innerHTML.includes('TÀI XẾ ĐÃ NHẬN CUỐC') || infoDiv.innerHTML.includes('BẮT ĐẦU HÀNH TRÌNH');
+        let confirmationMsg = "Bạn chắc chắn muốn hủy chuyến này?";
+        if (isAccepted) {
+            confirmationMsg = "Tài xế đã nhận cuốc/đã đón khách. Việc hủy có thể bị tính phí. Bạn chắc chắn muốn hủy?";
+        }
+
+        if (!confirm(confirmationMsg)) return;
 
         try {
             const rideRef = ref(db, 'rides/' + currentRideId);
@@ -261,7 +279,6 @@
             alert('Lỗi hủy chuyến: ' + (e.message || e));
         }
     });
-    // KẾT THÚC NÚT HỦY CHUYẾN
   </script>
 </body>
 </html>
