@@ -1,54 +1,98 @@
-/* style.css */
 :root {
-  --primary-color: #007bff; /* Blue */
-  --secondary-color: #6c757d; /* Gray */
-  --success-color: #28a745; /* Green */
-  --info-color: #17a2b8; /* Cyan for Complete */
-  --danger-color: #dc3545; /* Red */
-  --warning-color: #ffc107; /* Yellow for Driver Info */
-  --bg-color: #f8f9fa; /* Light Gray Background */
-  --card-bg: #ffffff; /* White Card Background */
+  --primary-color: #007bff; /* Màu chính (Ví dụ: Blue) */
+  --secondary-color: #6c757d; /* Màu phụ */
+  --success-color: #28a745; /* Màu Thành công (Xanh lá) */
+  --danger-color: #dc3545; /* Màu Hủy/Lỗi (Đỏ) */
+  --accept-color: #0b8; /* Màu Nhận cuốc */
+  --complete-color: #28a; /* Màu Hoàn thành */
+  --bg-color: #f8f9fa; /* Màu nền */
+  --card-bg: #ffffff; /* Màu nền card */
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Bóng đổ */
 }
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  padding: 12px;
   margin: 0;
+  padding: 0;
   background-color: var(--bg-color);
-  color: #343a40;
 }
 
-h2, h3 {
+h2 {
   color: #343a40;
-  border-bottom: 2px solid #eee;
-  padding-bottom: 5px;
-  margin-top: 20px;
+  margin-top: 0;
+  margin-bottom: 15px;
+  padding: 15px;
+  background-color: var(--card-bg);
+  border-bottom: 1px solid #dee2e6;
 }
 
-/* Form elements */
+#app-container {
+    padding: 12px;
+}
+
+/* --- MAP AND OVERLAY LAYOUT --- */
+#map {
+  height: 80vh; /* Tăng chiều cao bản đồ */
+  margin-top: 0;
+  z-index: 1; /* Đảm bảo bản đồ nằm dưới các lớp phủ */
+}
+
+.map-page-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.map-controls {
+    padding: 15px;
+    background-color: var(--card-bg);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+    z-index: 10;
+}
+
+/* --- CARD/OVERLAY STYLES --- */
+.overlay-card {
+    position: absolute;
+    top: auto;
+    bottom: 20px;
+    left: 15px;
+    right: 15px;
+    z-index: 100; /* Luôn nằm trên bản đồ */
+    background-color: var(--card-bg);
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    max-width: 450px;
+    margin: 0 auto;
+    transform: translateY(0); /* Cho animation */
+    transition: all 0.3s ease-in-out;
+}
+
+/* --- FORM ELEMENTS --- */
 input, select {
-  width: 100%;
   padding: 10px;
-  margin: 8px 0;
+  margin: 6px 0 10px 0;
+  width: 100%;
   box-sizing: border-box;
   border: 1px solid #ced4da;
-  border-radius: 4px;
-  transition: border-color 0.3s;
+  border-radius: 8px;
+  font-size: 16px;
 }
 
-input:focus, select:focus {
-  border-color: var(--primary-color);
-  outline: none;
-}
-
-/* Buttons */
-.btn {
-  padding: 10px 15px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s, opacity 0.3s;
+label {
   font-weight: bold;
+  color: #495057;
+  display: block;
+}
+
+/* --- BUTTONS --- */
+.btn {
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
   text-align: center;
 }
 
@@ -56,124 +100,94 @@ input:focus, select:focus {
   background-color: var(--primary-color);
   color: white;
 }
-.btn-primary:hover {
-  background-color: #0056b3;
-}
 
 .btn-secondary {
-    background-color: var(--secondary-color);
-    color: white;
-}
-.btn-secondary:hover {
-    background-color: #5a6268;
-}
-
-.btn-accept { /* For driver.html */
-  background-color: var(--success-color);
-  color: white;
-  flex: 1; /* Make it stretch */
-}
-.btn-accept:hover {
-  background-color: #1e7e34;
-}
-
-.btn-complete { /* For driver.html */
-  background-color: var(--info-color); 
+  background-color: var(--secondary-color);
   color: white;
 }
-.btn-complete:hover {
-  background-color: #117a8b;
-}
 
-/* --- BỔ SUNG: NÚT HỦY CHUYẾN --- */
 .btn-danger {
   background-color: var(--danger-color);
   color: white;
 }
-.btn-danger:hover {
-  background-color: #bd2130;
-}
-/* -------------------------------- */
 
-.btn-disabled, button:disabled {
-  background-color: #e9ecef !important;
-  color: #adb5bd !important;
-  cursor: not-allowed !important;
+.btn-accept {
+  background-color: var(--accept-color);
+  color: white;
+}
+
+.btn-complete {
+  background-color: var(--complete-color);
+  color: white;
+}
+
+.btn-disabled {
+  background-color: #e9ecef;
+  color: #adb5bd;
+  cursor: not-allowed;
 }
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin: 10px 0;
 }
+
 .col {
   flex: 1;
 }
 
-/* Map */
-#map {
-  height: 400px; /* Điều chỉnh chiều cao cho phù hợp */
-  margin-top: 15px;
-  border-radius: 6px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
+/* --- RIDER/DRIVER SPECIFIC STYLES --- */
 
-/* Info/Result */
-#info, #result {
-  margin-top: 15px;
-  padding: 15px;
-  border-radius: 6px;
-  background-color: var(--card-bg);
-  border: 1px solid #ddd;
-}
-#info b, #result b {
-  color: var(--primary-color);
-}
-
-/* Driver Specific */
-#driverInfo {
-  margin: 8px 0;
-  padding: 8px;
-  background-color: #ffeeba; /* Yellow tint */
-  border: 1px solid var(--warning-color);
-  color: #856404;
-  border-radius: 4px;
-}
-
+/* Ride Request Card - Driver App */
 .request {
-  border: 1px solid #ced4da;
-  padding: 12px;
-  margin: 10px 0;
-  border-radius: 6px;
   background-color: var(--card-bg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-.request b {
-  font-weight: 600;
-}
-.request button {
-  margin-top: 10px;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 10px;
+  border-left: 5px solid var(--accept-color); /* Đánh dấu cuốc mới */
 }
 
-/* --- BỔ SUNG CHO CHỨC NĂNG GỢI Ý ĐỊA CHỈ (AUTOSUGGEST) --- */
+/* --- TOAST/FEEDBACK (RIDER) --- */
+#toast-message {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #343a40;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    box-shadow: var(--shadow);
+    z-index: 2000;
+    transition: opacity 0.5s, transform 0.5s;
+    opacity: 0; /* Mặc định ẩn */
+}
+#toast-message.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* --- AUTOSUGGEST (RIDER) --- */
 .input-container {
   position: relative;
-  margin-bottom: 8px; /* Để giữ khoảng cách */
+  margin-bottom: 8px;
 }
 
 .autocomplete-list {
   position: absolute;
-  top: 100%; /* Đặt ngay dưới input */
+  top: 100%;
   left: 0;
   right: 0;
   z-index: 1000;
-  background-color: var(--card-bg, #ffffff);
+  background-color: var(--card-bg);
   border: 1px solid #ced4da;
   border-top: none;
-  border-radius: 0 0 4px 4px;
+  border-radius: 0 0 8px 8px;
   max-height: 200px;
   overflow-y: auto;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow);
   list-style: none;
   padding: 0;
   margin: 0;
@@ -191,11 +205,10 @@ input:focus, select:focus {
 }
 
 .autocomplete-list li:hover {
-  background-color: var(--bg-color, #f8f9fa);
+  background-color: var(--bg-color);
 }
 
 .current-location-btn {
-  /* Style cho nút Vị trí hiện tại */
   background: none;
   border: none;
   color: var(--primary-color);
@@ -203,7 +216,5 @@ input:focus, select:focus {
   padding: 0 0 0 10px;
   font-size: 0.9em;
   font-weight: bold;
-  /* Thêm để nút nằm cùng hàng với label */
   display: inline; 
 }
-/* ------------------------------------------------------------- */
