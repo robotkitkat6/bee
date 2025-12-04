@@ -1,0 +1,16 @@
+body {
+font-family: Arial;
+padding: 20px;
+}
+
+
+#map {
+height: 400px;
+margin-top: 10px;
+}
+
+
+input, select, button {
+margin: 5px;
+padding: 6px;
+}
