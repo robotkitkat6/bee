@@ -36,7 +36,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, push, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // ====== FIREBASE CONFIG ĐÃ ĐỒNG BỘ ======
+    // Cấu hình Firebase (Đã đồng bộ)
     const firebaseConfig = {
       apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
       authDomain: "robotkitkat6-bee.firebaseapp.com",
@@ -47,7 +47,6 @@
       appId: "1:117130770804:web:4827cc61a7c9df99549421",
       measurementId: "G-WMKP4GT930"
     };
-    // =============================================
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -58,6 +57,10 @@
 
     let routingControl = null;
     let lastRouteSummary = null; // {distance (m), duration (s)}
+    // --- BỔ SUNG LƯU TỌA ĐỘ KHI GEOCODE THÀNH CÔNG ---
+    let lastFromCoords = null; 
+    let lastToCoords = null;   
+    // ---------------------------------------------------
 
     const infoDiv = document.getElementById('info');
     const estimateBtn = document.getElementById('estimateBtn');
@@ -65,7 +68,6 @@
 
     // Pricing
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
-    const DRIVER_MAX_DISTANCE_KM = 1000; // rider can create any length; driver filter is done on driver side (<=3km)
 
     // Geocode via Nominatim
     async function geocode(q) {
@@ -97,6 +99,12 @@
         lastRouteSummary = { distance: route.summary.totalDistance, duration: route.summary.totalTime };
         displayInfo();
         requestBtn.disabled = false;
+      });
+      // Nếu không tìm thấy tuyến, routingControl không có route. summary sẽ là null.
+      routingControl.on('routingerror', function(e) {
+         lastRouteSummary = null; // Đảm bảo null
+         requestBtn.disabled = true; // Vô hiệu hóa nút gọi xe
+         infoDiv.innerHTML = `<div><b>Lỗi:</b> Không tìm thấy tuyến đường.</div>`;
       });
     }
 
@@ -130,10 +138,19 @@
         infoDiv.innerHTML = 'Đang tìm địa chỉ...';
         const fromCoords = await geocode(from);
         const toCoords = await geocode(to);
+
+        // --- LƯU TỌA ĐỘ THÀNH CÔNG VÀO BIẾN TOÀN CỤC ---
+        lastFromCoords = fromCoords;
+        lastToCoords = toCoords;
+        // ------------------------------------------------
+
         showRoute(fromCoords, toCoords);
       } catch (e) {
         alert(e.message || 'Lỗi khi geocode');
         infoDiv.innerHTML = '';
+        lastRouteSummary = null;
+        lastFromCoords = null;
+        lastToCoords = null;
       } finally {
         estimateBtn.disabled = false;
       }
@@ -141,7 +158,12 @@
 
     // Button: Request (push ride into /rides)
     requestBtn.addEventListener('click', async () => {
-      if (!lastRouteSummary) return alert('Chưa có tuyến');
+      // --- KIỂM TRA ĐIỀU KIỆN ĐỂ TRÁNH LỖI UNDEFINED ---
+      if (!lastRouteSummary || !lastFromCoords || !lastToCoords) {
+        return alert('Vui lòng nhấn "Ước tính & Hiển thị tuyến" trước và đảm bảo tìm thấy tuyến đường.');
+      }
+      // ----------------------------------------------------
+      
       const from = document.getElementById('from').value.trim();
       const to = document.getElementById('to').value.trim();
       const vehicle = document.getElementById('vehicle').value;
@@ -159,8 +181,10 @@
         status: 'finding',
         fromText: from,
         toText: to,
-        from: { lat: routingControl.getWaypoints()[0].lat, lng: routingControl.getWaypoints()[0].lng },
-        to: { lat: routingControl.getWaypoints()[1].lat, lng: routingControl.getWaypoints()[1].lng },
+        // --- SỬ DỤNG BIẾN TOÀN CỤC lastFromCoords & lastToCoords ĐÃ ĐƯỢC ĐẢM BẢO KHÔNG UNDEFINED ---
+        from: { lat: lastFromCoords.lat, lng: lastFromCoords.lng },
+        to: { lat: lastToCoords.lat, lng: lastToCoords.lng },
+        // ------------------------------------------------------------------------------------------
         distance_m: lastRouteSummary.distance,
         duration_s: lastRouteSummary.duration,
         distance_km: km,
