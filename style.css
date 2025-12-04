@@ -1,13 +1,13 @@
 :root {
-  --primary-color: #007bff; /* Màu chính (Ví dụ: Blue) */
+  --primary-color: #007bff; /* Màu chính (Blue) */
   --secondary-color: #6c757d; /* Màu phụ */
-  --success-color: #28a745; /* Màu Thành công (Xanh lá) */
-  --danger-color: #dc3545; /* Màu Hủy/Lỗi (Đỏ) */
+  --success-color: #28a745; /* Màu Thành công (Green) */
+  --danger-color: #dc3545; /* Màu Hủy/Lỗi (Red) */
   --accept-color: #0b8; /* Màu Nhận cuốc */
   --complete-color: #28a; /* Màu Hoàn thành */
   --bg-color: #f8f9fa; /* Màu nền */
   --card-bg: #ffffff; /* Màu nền card */
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Bóng đổ */
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Bóng đổ mạnh hơn */
 }
 
 body {
@@ -15,60 +15,124 @@ body {
   margin: 0;
   padding: 0;
   background-color: var(--bg-color);
+  overflow-x: hidden;
+}
+
+/* --- LAYOUT CHÍNH: MAP chiếm toàn bộ màn hình, các thành phần khác OVERLAY --- */
+.map-page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Quan trọng: Đảm bảo chiếm 100% màn hình */
+    position: relative;
+}
+
+#map {
+  flex-grow: 1; /* Cho phép map chiếm hết phần không gian còn lại */
+  z-index: 1; 
+  height: 100%; /* Giữ nguyên chiều cao 100% container */
 }
 
 h2 {
   color: #343a40;
   margin-top: 0;
   margin-bottom: 15px;
-  padding: 15px;
-  background-color: var(--card-bg);
-  border-bottom: 1px solid #dee2e6;
+  padding: 0;
+  font-size: 1.2em;
 }
 
-#app-container {
-    padding: 12px;
-}
-
-/* --- MAP AND OVERLAY LAYOUT --- */
-#map {
-  height: 80vh; /* Tăng chiều cao bản đồ */
-  margin-top: 0;
-  z-index: 1; /* Đảm bảo bản đồ nằm dưới các lớp phủ */
-}
-
-.map-page-container {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-}
-
-.map-controls {
-    padding: 15px;
-    background-color: var(--card-bg);
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-    z-index: 10;
-}
-
-/* --- CARD/OVERLAY STYLES --- */
+/* --- CARD/OVERLAY CHUNG --- */
 .overlay-card {
     position: absolute;
     top: auto;
-    bottom: 20px;
-    left: 15px;
-    right: 15px;
-    z-index: 100; /* Luôn nằm trên bản đồ */
+    bottom: 0px; /* Đặt sát mép dưới */
+    left: 0;
+    right: 0;
+    z-index: 100; 
     background-color: var(--card-bg);
     padding: 15px;
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    max-width: 450px;
-    margin: 0 auto;
-    transform: translateY(0); /* Cho animation */
+    border-radius: 12px 12px 0 0; /* Bo góc trên */
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+    max-height: 80vh; /* Giới hạn chiều cao */
+    overflow-y: auto;
+    width: 100%;
+    box-sizing: border-box;
     transition: all 0.3s ease-in-out;
 }
 
-/* --- FORM ELEMENTS --- */
+/* --- DRIVER SPECIFIC OVERLAYS --- */
+/* Overlay điều khiển (Online/Offline) */
+#statusControl.overlay-card {
+    top: 15px;
+    bottom: auto;
+    left: 15px;
+    right: auto;
+    width: auto;
+    max-width: 300px;
+    border-radius: 12px;
+}
+/* Trạng thái sau khi Online (nhỏ lại) */
+#statusControl.small {
+    padding: 8px 12px;
+    width: auto;
+    max-width: 250px;
+    right: 15px;
+    left: auto;
+    border-left: 5px solid var(--success-color);
+}
+#statusControl.small h2 { display: none; }
+#statusControl.small #driverNameInput { display: none; }
+#statusControl.small .row { margin: 0; }
+#statusControl.small #driverInfo { font-size: 0.9em; margin-bottom: 0; }
+
+
+/* Cuốc xe mới đến (New Ride Request) */
+.new-request-card {
+    background-color: rgba(0, 0, 0, 0.85); /* Nền đen mờ */
+    color: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    margin-bottom: 10px;
+    border-left: 5px solid #ffc107; /* Màu cảnh báo */
+    max-width: 350px;
+    transition: all 0.2s;
+}
+.new-request-card:hover {
+    background-color: rgba(0, 0, 0, 0.9);
+    cursor: pointer;
+}
+.new-request-card h3 { 
+    font-size: 1.1em; 
+    color: #ffc107; /* Màu vàng */
+    margin: 0 0 5px 0;
+}
+.new-request-card .distance-info {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #e9ecef;
+}
+.new-request-card .row .btn {
+    padding: 8px;
+    font-size: 0.9em;
+}
+
+/* Lớp phủ cuốc xe đang chạy (Active Ride) */
+#activeRideOverlay {
+    bottom: 15px;
+    left: 15px;
+    right: 15px;
+    border-radius: 12px;
+    padding: 15px;
+    max-width: 450px;
+    margin: 0 auto;
+}
+.active-request h3 {
+    font-size: 1.2em;
+    margin: 0 0 10px 0;
+}
+
+
+/* --- FORM ELEMENTS CHUNG --- */
 input, select {
   padding: 10px;
   margin: 6px 0 10px 0;
@@ -77,6 +141,12 @@ input, select {
   border: 1px solid #ced4da;
   border-radius: 8px;
   font-size: 16px;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    outline: none;
 }
 
 label {
@@ -85,43 +155,39 @@ label {
   display: block;
 }
 
-/* --- BUTTONS --- */
+/* --- BUTTONS CHUNG --- */
 .btn {
-  padding: 10px;
+  padding: 12px; /* Tăng padding nút */
   border: none;
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
   transition: background-color 0.2s;
   text-align: center;
+  font-size: 1em;
 }
 
 .btn-primary {
   background-color: var(--primary-color);
   color: white;
 }
-
-.btn-secondary {
-  background-color: var(--secondary-color);
+.btn-success {
+  background-color: var(--success-color);
   color: white;
 }
-
 .btn-danger {
   background-color: var(--danger-color);
   color: white;
 }
-
 .btn-accept {
   background-color: var(--accept-color);
   color: white;
 }
-
 .btn-complete {
   background-color: var(--complete-color);
   color: white;
 }
-
-.btn-disabled {
+.btn:disabled, .btn-disabled {
   background-color: #e9ecef;
   color: #adb5bd;
   cursor: not-allowed;
@@ -137,22 +203,11 @@ label {
   flex: 1;
 }
 
-/* --- RIDER/DRIVER SPECIFIC STYLES --- */
-
-/* Ride Request Card - Driver App */
-.request {
-  background-color: var(--card-bg);
-  padding: 15px;
-  border-radius: 10px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  margin-bottom: 10px;
-  border-left: 5px solid var(--accept-color); /* Đánh dấu cuốc mới */
-}
 
 /* --- TOAST/FEEDBACK (RIDER) --- */
 #toast-message {
     position: fixed;
-    bottom: 10px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     background-color: #343a40;
@@ -162,11 +217,13 @@ label {
     box-shadow: var(--shadow);
     z-index: 2000;
     transition: opacity 0.5s, transform 0.5s;
-    opacity: 0; /* Mặc định ẩn */
+    opacity: 0;
+    max-width: 90%;
+    text-align: center;
 }
 #toast-message.show {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateX(-50%) translateY(-20px); /* Nhấc lên một chút */
 }
 
 /* --- AUTOSUGGEST (RIDER) --- */
@@ -174,7 +231,6 @@ label {
   position: relative;
   margin-bottom: 8px;
 }
-
 .autocomplete-list {
   position: absolute;
   top: 100%;
@@ -199,11 +255,6 @@ label {
   border-bottom: 1px solid #eee;
   font-size: 0.9em;
 }
-
-.autocomplete-list li:last-child {
-  border-bottom: none;
-}
-
 .autocomplete-list li:hover {
   background-color: var(--bg-color);
 }
