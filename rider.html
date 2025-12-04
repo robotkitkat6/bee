@@ -24,8 +24,8 @@
   <div class="row">
     <button id="estimateBtn" class="col btn btn-primary">Ước tính & Hiển thị tuyến</button>
     <button id="requestBtn" class="col btn btn-secondary" disabled>Gọi xe (lưu)</button>
+    <button id="cancelBtn" class="col btn btn-danger" style="display:none;" disabled>Hủy chuyến</button>
   </div>
-
   <div id="info"></div>
   <div id="map"></div>
 
@@ -34,7 +34,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, push, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, push, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
     // Cấu hình Firebase (Đã đồng bộ)
     const firebaseConfig = {
@@ -57,14 +57,14 @@
 
     let routingControl = null;
     let lastRouteSummary = null; // {distance (m), duration (s)}
-    // --- BỔ SUNG LƯU TỌA ĐỘ KHI GEOCODE THÀNH CÔNG ---
     let lastFromCoords = null; 
     let lastToCoords = null;   
-    // ---------------------------------------------------
+    let currentRideId = null; // BIẾN MỚI: Theo dõi ID chuyến đi hiện tại
 
     const infoDiv = document.getElementById('info');
     const estimateBtn = document.getElementById('estimateBtn');
     const requestBtn = document.getElementById('requestBtn');
+    const cancelBtn = document.getElementById('cancelBtn'); // NÚT MỚI
 
     // Pricing
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
@@ -75,7 +75,6 @@
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
       const arr = await res.json();
       if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
-      // return first result {lat, lon, display_name}
       return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
     }
 
@@ -100,10 +99,10 @@
         displayInfo();
         requestBtn.disabled = false;
       });
-      // Nếu không tìm thấy tuyến, routingControl không có route. summary sẽ là null.
+
       routingControl.on('routingerror', function(e) {
-         lastRouteSummary = null; // Đảm bảo null
-         requestBtn.disabled = true; // Vô hiệu hóa nút gọi xe
+         lastRouteSummary = null;
+         requestBtn.disabled = true;
          infoDiv.innerHTML = `<div><b>Lỗi:</b> Không tìm thấy tuyến đường.</div>`;
       });
     }
@@ -126,9 +125,41 @@
         <div><b>Giá ước tính:</b> ${priceCalc.toLocaleString()} đ</div>
       `;
     }
+    
+    // HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE
+    function listenForAcceptance(rideId) {
+        const rideRef = ref(db, 'rides/' + rideId);
+        onValue(rideRef, (snap) => {
+            const ride = snap.val();
+            
+            if (!ride) {
+                 // Cuốc xe đã bị hủy (bởi rider/driver) hoặc hoàn thành
+                 if (currentRideId === rideId) {
+                     infoDiv.innerHTML = infoDiv.innerHTML.includes('✅') ? infoDiv.innerHTML : `<div style="color:var(--secondary-color); margin-top: 10px;">Cuốc xe đã kết thúc.</div>`;
+                     cancelBtn.style.display = 'none';
+                     requestBtn.disabled = false;
+                     currentRideId = null;
+                 }
+                 return;
+            }
 
-    // Button: Estimate
+            if (ride.status === 'accepted') {
+                const driverName = ride.driverName || 'Tài xế';
+                infoDiv.innerHTML = `
+                    <div style="color:var(--primary-color); font-weight: bold; font-size: 1.2em;">✅ TÀI XẾ ĐÃ NHẬN CUỐC!</div>
+                    <div>Tài xế <b>${driverName}</b> đang đến đón bạn.</div>
+                `;
+            } else if (ride.status === 'finding') {
+                if (!infoDiv.innerHTML.includes('Đang tìm tài xế')) {
+                    infoDiv.innerHTML += `<div style="color:var(--success-color); margin-top: 10px;">Yêu cầu đã gửi (ID: ${rideId}). Đang tìm tài xế...</div>`;
+                }
+            }
+        });
+    }
+
+    // Button: Estimate (Giữ nguyên)
     estimateBtn.addEventListener('click', async () => {
+      // Logic Geocode...
       const from = document.getElementById('from').value.trim();
       const to = document.getElementById('to').value.trim();
       if (!from || !to) return alert('Nhập điểm đón và điểm đến');
@@ -136,13 +167,15 @@
         estimateBtn.disabled = true;
         requestBtn.disabled = true;
         infoDiv.innerHTML = 'Đang tìm địa chỉ...';
+        
+        // ẨN NÚT HỦY KHI ƯỚC TÍNH LẠI
+        cancelBtn.style.display = 'none';
+
         const fromCoords = await geocode(from);
         const toCoords = await geocode(to);
 
-        // --- LƯU TỌA ĐỘ THÀNH CÔNG VÀO BIẾN TOÀN CỤC ---
         lastFromCoords = fromCoords;
         lastToCoords = toCoords;
-        // ------------------------------------------------
 
         showRoute(fromCoords, toCoords);
       } catch (e) {
@@ -156,13 +189,11 @@
       }
     });
 
-    // Button: Request (push ride into /rides)
+    // Button: Request (Đã sửa)
     requestBtn.addEventListener('click', async () => {
-      // --- KIỂM TRA ĐIỀU KIỆN ĐỂ TRÁNH LỖI UNDEFINED ---
       if (!lastRouteSummary || !lastFromCoords || !lastToCoords) {
         return alert('Vui lòng nhấn "Ước tính & Hiển thị tuyến" trước và đảm bảo tìm thấy tuyến đường.');
       }
-      // ----------------------------------------------------
       
       const from = document.getElementById('from').value.trim();
       const to = document.getElementById('to').value.trim();
@@ -170,21 +201,17 @@
       const km = lastRouteSummary.distance / 1000;
       const mins = Math.round(lastRouteSummary.duration / 60);
 
-      // calculate fare
       let fare = 0;
       if (vehicle === 'bike') fare = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
       else fare = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
 
-      // create ride object
       const ride = {
         createdAt: Date.now(),
         status: 'finding',
         fromText: from,
         toText: to,
-        // --- SỬ DỤNG BIẾN TOÀN CỤC lastFromCoords & lastToCoords ĐÃ ĐƯỢC ĐẢM BẢO KHÔNG UNDEFINED ---
         from: { lat: lastFromCoords.lat, lng: lastFromCoords.lng },
         to: { lat: lastToCoords.lat, lng: lastToCoords.lng },
-        // ------------------------------------------------------------------------------------------
         distance_m: lastRouteSummary.distance,
         duration_s: lastRouteSummary.duration,
         distance_km: km,
@@ -196,13 +223,45 @@
       try {
         const ridesRef = ref(db, 'rides');
         const newRef = await push(ridesRef, ride);
-        infoDiv.innerHTML += `<div style="color:var(--success-color); margin-top: 10px;">Yêu cầu đã gửi (ID: ${newRef.key}). Đang tìm tài xế...</div>`;
+        const rideId = newRef.key;
+
+        currentRideId = rideId; // LƯU ID CUỐC XE
+        listenForAcceptance(rideId);
+        
         requestBtn.disabled = true;
+
+        // HIỂN THỊ NÚT HỦY CHUYẾN
+        cancelBtn.style.display = 'inline-block';
+        cancelBtn.disabled = false;
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
       }
     });
 
+    // NÚT MỚI: HỦY CHUYẾN (RIDER)
+    cancelBtn.addEventListener('click', async () => {
+        if (!currentRideId) return;
+
+        if (!confirm("Bạn chắc chắn muốn hủy chuyến này? Việc hủy có thể bị tính phí nếu tài xế đã nhận cuốc.")) return;
+
+        try {
+            const rideRef = ref(db, 'rides/' + currentRideId);
+            await remove(rideRef); // Xóa khỏi Firebase
+
+            infoDiv.innerHTML = '<div style="color:var(--danger-color); font-weight: bold; margin-top: 10px;">❌ ĐÃ HỦY CHUYẾN.</div>';
+            
+            // Reset UI
+            currentRideId = null;
+            requestBtn.disabled = false;
+            cancelBtn.style.display = 'none';
+            
+            if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
+
+        } catch (e) {
+            alert('Lỗi hủy chuyến: ' + (e.message || e));
+        }
+    });
+    // KẾT THÚC NÚT HỦY CHUYẾN
   </script>
 </body>
 </html>
