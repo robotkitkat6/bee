@@ -129,7 +129,7 @@
         getDatabase, push, ref, onValue, remove, update
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // ====== FIREBASE CONFIG ĐÃ ĐƯỢC CẬP NHẬT ======
+    // ====== Cấu hình Firebase ======
     const firebaseConfig = {
       apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
       authDomain: "robotkitkat6-bee.firebaseapp.com",
@@ -154,6 +154,10 @@
     let currentRideId = null;
     let driverMarker = null;
 
+    // Biến mới cho vị trí người đặt xe
+    let riderCurrentMarker = null;
+    let riderCurrentPos = null; // {lat, lng, display}
+
     // Elements
     const infoDiv = document.getElementById('info');
     const estimateBtn = document.getElementById('estimateBtn');
@@ -165,10 +169,6 @@
 
     // Pricing
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
-    // const DRIVER_MAX_DISTANCE_KM = 1000; // Not used on rider side
-
-    // Marker Group for Drivers (if needed for later, keep for now)
-    // const driverClusterGroup = L.markerClusterGroup().addTo(map); 
 
     // Hàm Utility: Hiển thị/Ẩn Control Overlay
     function toggleControlOverlay(state = 'default') {
@@ -196,15 +196,58 @@
         }
     });
 
-    // Geocode via Nominatim
-    async function geocode(q) {
-      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q);
+    // === CHỨC NĂNG ĐỊNH VỊ VÀ ĐỀ XUẤT ĐỊA CHỈ ===
+
+    // Reverse Geocode via Nominatim
+    async function reverseGeocode(lat, lng) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
-      const arr = await res.json();
-      if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
-      // return first result {lat, lon, display_name}
-      return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
+      const data = await res.json();
+      if (data && data.display_name) {
+        return data.display_name;
+      }
+      return `Vị trí (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     }
+
+    // Get current location, update map, and fill 'from' input
+    function getCurrentLocationAndInitMap() {
+        if (!navigator.geolocation) {
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Trình duyệt không hỗ trợ định vị. Vui lòng nhập địa chỉ.</div>`;
+            return;
+        }
+
+        infoDiv.innerHTML = `<div style="color:var(--primary-color);">Đang tìm vị trí hiện tại...</div>`;
+
+        // Attempt to get high accuracy position
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            riderCurrentPos = { lat, lng };
+
+            // Center map and add marker
+            map.setView([lat, lng], 16);
+            if (riderCurrentMarker) map.removeLayer(riderCurrentMarker); // Xóa marker cũ nếu có
+            riderCurrentMarker = L.marker([lat, lng]).addTo(map);
+            riderCurrentMarker.bindPopup("Vị trí của bạn").openPopup();
+
+            // Reverse Geocode to fill 'from' input
+            try {
+                const addressText = await reverseGeocode(lat, lng);
+                riderCurrentPos.display = addressText;
+                // Đề xuất địa chỉ (tự động điền)
+                document.getElementById('from').value = addressText; 
+                infoDiv.innerHTML = `<div style="color:var(--success-color);">Đã tìm thấy vị trí hiện tại: ${addressText.split(',').slice(0, 2).join(',')}</div>`;
+            } catch (e) {
+                console.error("Lỗi reverse geocode:", e);
+                document.getElementById('from').value = `(${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+            }
+
+        }, (err) => {
+            console.warn(`Lỗi định vị: ${err.code} - ${err.message}`);
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Không lấy được vị trí hiện tại. Vui lòng nhập địa chỉ.</div>`;
+        }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+    }
+    // END CHỨC NĂNG ĐỊNH VỊ
 
     // Estimate route using Leaflet Routing Machine (OSRM public)
     function showRoute(fromCoords, toCoords) {
@@ -323,7 +366,6 @@
             } else {
                 driverMarker.setLatLng(driverCoords);
             }
-            // map.panTo(driverCoords); // Giữ map ở vị trí hiện tại
         } else if (driverMarker) {
             map.removeLayer(driverMarker);
             driverMarker = null;
@@ -347,6 +389,11 @@
                         currentRideId = null;
                         if (driverMarker) map.removeLayer(driverMarker);
                         driverMarker = null;
+                        // Mở lại form input
+                        document.getElementById('from').disabled = false;
+                        document.getElementById('to').disabled = false;
+                        document.getElementById('vehicle').disabled = false;
+                        requestBtn.disabled = true; // Vô hiệu hóa nút gọi xe cho đến khi ước tính lại
                     }, 5000);
                 }
             } else {
@@ -357,6 +404,11 @@
                     currentRideId = null;
                     if (driverMarker) map.removeLayer(driverMarker);
                     driverMarker = null;
+                    // Mở lại form input
+                    document.getElementById('from').disabled = false;
+                    document.getElementById('to').disabled = false;
+                    document.getElementById('vehicle').disabled = false;
+                    requestBtn.disabled = true; 
                 }, 5000);
             }
         });
@@ -414,14 +466,19 @@
       if (vehicle === 'bike') fare = Math.max(Math.round(km * PRICE.bikePerKm), PRICE.bikeMin);
       else fare = Math.max(Math.round(km * PRICE.carPerKm), PRICE.carMin);
 
+      // FIX LỖI: Lấy tọa độ từ waypoint object phải dùng .latLng
+      const waypointFrom = routingControl.getWaypoints()[0].latLng;
+      const waypointTo = routingControl.getWaypoints()[1].latLng;
+
       // create ride object
       const ride = {
         createdAt: Date.now(),
         status: 'finding',
         fromText: from,
         toText: to,
-        from: { lat: routingControl.getWaypoints()[0].lat.lat, lng: routingControl.getWaypoints()[0].lat.lng },
-        to: { lat: routingControl.getWaypoints()[1].lat.lat, lng: routingControl.getWaypoints()[1].lat.lng },
+        // SỬA LỖI NÚT GỌI XE
+        from: { lat: waypointFrom.lat, lng: waypointFrom.lng }, 
+        to: { lat: waypointTo.lat, lng: waypointTo.lng },
         distance_m: lastRouteSummary.distance,
         duration_s: lastRouteSummary.duration,
         distance_km: km,
@@ -435,7 +492,7 @@
         requestBtn.disabled = true;
         const newRef = await push(ridesRef, ride);
         
-        infoDiv.innerHTML = `<div style="color:blue">Đã gọi xe. ID: ${newRef.key}.</div>`;
+        infoDiv.innerHTML = `<div style="color:blue">Đã gọi xe. ID: ${newRef.key}. Đang tìm tài xế...</div>`;
         
         // Bắt đầu lắng nghe trạng thái cuốc xe
         listenToRide(newRef.key);
@@ -450,6 +507,9 @@
         requestBtn.disabled = false;
       }
     });
+
+    // Gọi hàm định vị khi trang được tải
+    getCurrentLocationAndInitMap();
 
   </script>
 </body>
