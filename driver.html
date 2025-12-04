@@ -5,38 +5,26 @@
   <title>Driver — Nhận cuốc</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    body{font-family:Arial;margin:0;padding:12px}
-    #map{height:52vh;margin-top:8px}
-    input,button{padding:8px;margin:6px 0;width:100%;box-sizing:border-box}
-    .request{border:1px solid #ddd;padding:8px;margin:8px 0;border-radius:6px}
-    .btn{padding:8px;border:none;border-radius:6px;cursor:pointer}
-    .btn-accept{background:#0b8;color:#042}
-    .btn-complete{background:#28a;color:white}
-    .btn-disabled{background:#eee;color:#999;cursor:not-allowed}
-  </style>
-</head>
+  <link rel="stylesheet" href="style.css" /> </head>
 <body>
   <h2>Driver — Bật Online</h2>
   <input id="driverName" placeholder="Tên tài xế (ví dụ: Tài xế A)"/>
   <div style="display:flex;gap:8px;">
-    <button id="goOnline" class="btn">Bật Online</button>
-    <button id="goOffline" class="btn" style="display:none">Tắt Online</button>
+    <button id="goOnline" class="btn btn-primary col">Bật Online</button>
+    <button id="goOffline" class="btn btn-secondary col" style="display:none">Tắt Online</button>
   </div>
 
-  <div id="driverInfo" style="margin:6px 0;color:#555">Chưa online</div>
+  <div id="driverInfo">Chưa online</div>
 
   <h3>Cuốc gần bạn (≤ 3 km)</h3>
   <div id="requests"></div>
 
   <div id="map"></div>
 
-  <!-- libs -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
-  <!-- Firebase modular -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
@@ -44,15 +32,16 @@
       onValue, update, push
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    // ====== THAY BẰNG FIREBASE CONFIG CỦA BẠN ======
+    // ====== FIREBASE CONFIG ĐÃ ĐỒNG BỘ ======
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "XXX",
-      appId: "XXX"
+      apiKey: "AIzaSyCUQpfPPlJqLRm9FyryfX2UOa82mUWbJrE",
+      authDomain: "robotkitkat6-bee.firebaseapp.com",
+      databaseURL: "https://robotkitkat6-bee-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "robotkitkat6-bee",
+      storageBucket: "robotkitkat6-bee.firebasestorage.app",
+      messagingSenderId: "117130770804",
+      appId: "1:117130770804:web:4827cc61a7c9df99549421",
+      measurementId: "G-WMKP4GT930"
     };
     // =============================================
 
@@ -146,11 +135,11 @@
       const el = document.createElement('div');
       el.className = 'request';
       el.id = 'ride_' + rideId;
-      const pickup = `${rideObj.from.lat.toFixed(5)}, ${rideObj.from.lng.toFixed(5)}`;
-      const dest = rideObj.to ? `${rideObj.to.lat.toFixed(5)}, ${rideObj.to.lng.toFixed(5)}` : '—';
+      const pickup = `${rideObj.fromText || '—'}`;
+      const dest = `${rideObj.toText || '—'}`;
       el.innerHTML = `
         <div><b>ID:</b> ${rideId}</div>
-        <div><b>Loại:</b> ${rideObj.vehicle || '—'}</div>
+        <div><b>Loại:</b> ${rideObj.vehicle === 'bike' ? 'Xe máy' : 'Ô tô'}</div>
         <div><b>Cách bạn:</b> ${distKm.toFixed(2)} km</div>
         <div><b>Điểm đón:</b> ${pickup}</div>
         <div><b>Điểm đến:</b> ${dest}</div>
@@ -272,7 +261,7 @@
           const pickupPt = turf.point([r.from.lng, r.from.lat]);
           const d = turf.distance(driverPt, pickupPt, { units: 'kilometers' });
           if (d <= 3) {
-            if (!shownRides[rideId]) createRideUI(rideId, r, d);
+            if (!shownRides[rideId] || !shownRides[rideId].accepted) createRideUI(rideId, r, d);
           } else removeRideFromUI(rideId);
         });
       }, { onlyOnce: true });
@@ -290,6 +279,10 @@
       setTimeout(async () => {
         if (!lastPos) {
           alert('Không lấy được vị trí — kiểm tra quyền truy cập vị trí');
+          document.getElementById('goOnline').style.display = 'inline-block';
+          document.getElementById('goOffline').style.display = 'none';
+          document.getElementById('driverInfo').innerText = 'Lỗi kết nối vị trí';
+          online = false;
           return;
         }
         await setDriverOnline(name, lastPos.lat, lastPos.lng);
@@ -305,29 +298,13 @@
       stopWatch();
       await setDriverOffline();
       requestsDiv.innerHTML = '';
+      shownRides = {};
     });
 
     // on unload, set offline
     window.addEventListener('beforeunload', async () => {
       if (online) { await setDriverOffline(); }
     });
-
-    // ensure lastPos updated function
-    async function setDriverOnline(name, lat, lng) {
-      const dRef = ref(db, 'drivers/' + DRIVER_ID);
-      await set(dRef, { id: DRIVER_ID, name, lat, lng, online:true, updatedAt: Date.now() });
-    }
-    async function setDriverOffline() {
-      const dRef = ref(db, 'drivers/' + DRIVER_ID);
-      await remove(dRef).catch(()=>{});
-    }
-    async function updateDriverLocation(lat, lng) {
-      lastPos = { lat, lng };
-      driverMarker.setLatLng([lat,lng]);
-      map.panTo([lat,lng]);
-      const dRef = ref(db, 'drivers/' + DRIVER_ID);
-      await update(dRef, { lat, lng, updatedAt: Date.now() }).catch(()=>{});
-    }
 
     // small periodic refresh
     setInterval(() => {
