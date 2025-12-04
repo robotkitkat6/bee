@@ -24,7 +24,7 @@
     <div id="map"></div>
 
     <div id="controlsOverlay" class="overlay-card">
-        <h2 style="margin: 0 0 10px 0;">Đặt chuyến</h2>
+        <h2 style="margin: 0 0 10px 0; font-size: 1.2em; padding: 0; border: none;">Đặt chuyến</h2>
         
         <label>Điểm đón 
             <button id="currentLocationBtn" class="current-location-btn">
@@ -82,7 +82,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Map init (Giữ nguyên)
+    // Map init
     const map = L.map('map').setView([10.762622, 106.660172], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -110,7 +110,7 @@
 
     const PRICE = { bikePerKm: 6000, carPerKm: 10000, bikeMin: 10000, carMin: 20000 };
 
-    // === CẬP NHẬT HÀM TOAST: Thêm spinner và logic sticky ===
+    // === SỬA HÀM TOAST: Thêm tham số sticky (giữ thông báo) ===
     let currentToastTimeout = null;
 
     function hideToast() {
@@ -122,16 +122,15 @@
         }, 500);
     }
     
-    // Thêm tham số `hasSpinner` cho thông báo xoay xoay
-    function showToast(message, duration = 3000, sticky = false, hasSpinner = false) {
-        // Luôn clear timeout cũ, nhưng không ẩn giao diện ngay nếu thông báo mới là sticky
+    function showToast(message, duration = 3000, sticky = false) {
+        // Xóa timeout cũ nếu có (và reset ẩn)
         if (currentToastTimeout) {
             clearTimeout(currentToastTimeout);
             currentToastTimeout = null;
+            hideToast(); 
         }
 
-        const spinnerHtml = hasSpinner ? '<span class="spinner">⚙️</span> ' : ''; // Sử dụng emoji làm spinner
-        toastDiv.innerHTML = spinnerHtml + message;
+        toastDiv.textContent = message;
         toastDiv.style.display = 'block';
         
         // Timeout ngắn để chuyển trạng thái "show"
@@ -143,19 +142,21 @@
             currentToastTimeout = setTimeout(() => {
                 hideToast();
             }, duration);
-        } else {
-             // Nếu sticky, đảm bảo không có timeout để tự ẩn
         }
     }
-    // ==========================================================
+    // ==================
 
-    // ... (Giữ nguyên các hàm Geocode, ReverseGeocode, Autosuggest, InitDriverListener) ...
+    // ... (Giữ nguyên logic Geolocation, ReverseGeocode, Autosuggest) ...
     async function reverseGeocode(lat, lng) {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=vi`;
         const res = await fetch(url);
         const data = await res.json();
         if (data && data.display_name) {
-             return { lat: parseFloat(data.lat), lng: parseFloat(data.lon), display: data.display_name };
+             return { 
+                lat: parseFloat(data.lat), 
+                lng: parseFloat(data.lon), 
+                display: data.display_name 
+            };
         }
         throw new Error('Không tìm thấy địa chỉ cho tọa độ này.');
     }
@@ -163,9 +164,10 @@
         infoDiv.innerHTML = 'Đang tìm vị trí hiện tại...';
         document.getElementById('currentLocationBtn').disabled = true;
         if (!navigator.geolocation) {
+            alert('Trình duyệt của bạn không hỗ trợ Định vị.');
             document.getElementById('currentLocationBtn').disabled = false;
             infoDiv.innerHTML = '';
-            return alert('Trình duyệt của bạn không hỗ trợ Định vị.');
+            return;
         }
         navigator.geolocation.getCurrentPosition(async (position) => {
             const lat = position.coords.latitude;
@@ -272,7 +274,6 @@
     initDriverListener();
     // ==========================================================
     
-    // ... (Giữ nguyên logic showRoute, displayInfo) ...
     function showRoute(fromCoords, toCoords) {
       if (routingControl) { map.removeControl(routingControl); routingControl = null; lastRouteSummary = null; }
       routingControl = L.Routing.control({
@@ -325,7 +326,6 @@
       `;
     }
     
-    // --- LẮNG NGHE CHUYẾN ĐI (RIDER) ---
     function listenForAcceptance(rideId) {
         const rideRef = ref(db, 'rides/' + rideId);
         onValue(rideRef, (snap) => {
@@ -333,8 +333,8 @@
             
             if (!ride) {
                  if (currentRideId === rideId) {
-                     // Cuốc đã bị hủy / hoàn thành
-                     showToast('Cuốc xe đã kết thúc hoặc bị hủy.', 5000, false);
+                     showToast('Cuốc xe đã kết thúc hoặc bị hủy.', 5000);
+                     hideToast(); // Ẩn ngay sau khi báo hủy
                      cancelBtn.style.display = 'none';
                      requestBtn.disabled = false;
                      currentRideId = null;
@@ -345,16 +345,16 @@
             const driverName = ride.driverName || 'Tài xế';
 
             if (ride.status === 'accepted') {
-                // Tài xế nhận: Tắt sticky, hiện thông báo mới
-                showToast(`✅ Đã tìm được tài xế: ${driverName.split('-')[0].trim()} đang đến đón bạn!`, 8000, false);
+                // Khi được nhận, thông báo ngắn và tự động ẩn (sticky=false)
+                showToast(`✅ Tài xế ${driverName.split('-')[0].trim()} đã nhận cuốc! Đang đến đón bạn.`, 8000, false);
                 infoDiv.innerHTML = `<div style="color:var(--primary-color);">Tài xế <b>${driverName}</b> đang đến đón bạn.</div>`;
             } else if (ride.status === 'onTrip') {
-                // Bắt đầu chuyến đi: Tắt sticky, hiện thông báo mới
+                // Khi bắt đầu chuyến đi, thông báo ngắn và tự động ẩn (sticky=false)
                 showToast(`🚗 Bắt đầu hành trình cùng Tài xế ${driverName.split('-')[0].trim()}!`, 8000, false);
                 infoDiv.innerHTML = `<div style="color:var(--success-color);">Bạn đang trên đường đến điểm đến.</div>`;
             } else if (ride.status === 'finding') {
-                // ĐANG TÌM: STICKY VÀ CÓ SPINNER
-                showToast('Đang tìm tài xế gần bạn...', 0, true, true); 
+                // ĐANG TÌM TÀI XẾ: SỬ DỤNG STICKY = TRUE
+                showToast('🔍 Đang tìm tài xế gần bạn...', 0, true); 
                 infoDiv.innerHTML = `<div style="color:var(--secondary-color);">Yêu cầu đã gửi (ID: ${rideId.slice(-4)}). Đang tìm tài xế...</div>`;
             }
             
@@ -368,7 +368,6 @@
         });
     }
 
-    // ... (Giữ nguyên logic Event Listeners cho Estimate, Request, Cancel) ...
     document.getElementById('estimateBtn').addEventListener('click', async () => {
       const from = document.getElementById('from').value.trim();
       const to = document.getElementById('to').value.trim();
@@ -379,10 +378,21 @@
         requestBtn.disabled = true;
         infoDiv.innerHTML = '<div style="color:var(--secondary-color);">Đang tìm địa chỉ...</div>';
         cancelBtn.style.display = 'none';
-        hideToast(); 
+        hideToast(); // Đảm bảo ẩn toast cũ nếu có
 
-        let fromCoords = selectedFromCoord || await geocode(from);
-        let toCoords = selectedToCoord || await geocode(to);
+        let fromCoords, toCoords;
+
+        if (selectedFromCoord) {
+            fromCoords = selectedFromCoord;
+        } else {
+             fromCoords = await geocode(from);
+        }
+        
+        if (selectedToCoord) {
+            toCoords = selectedToCoord;
+        } else {
+             toCoords = await geocode(to);
+        }
 
         showRoute(fromCoords, toCoords);
 
@@ -431,7 +441,9 @@
 
         currentRideId = rideId; 
         listenForAcceptance(rideId);
+        
         requestBtn.disabled = true;
+        // Bỏ showToast ở đây vì listenForAcceptance đã đảm nhận việc hiển thị STICKY toast
 
       } catch (e) {
         alert('Lỗi gửi yêu cầu: ' + (e.message || e));
@@ -443,7 +455,9 @@
 
         const isAccepted = infoDiv.innerHTML.includes('Tài xế') || infoDiv.innerHTML.includes('Bắt đầu hành trình');
         let confirmationMsg = "Bạn chắc chắn muốn hủy chuyến này?";
-        if (isAccepted) { confirmationMsg = "Tài xế đã nhận cuốc. Bạn chắc chắn muốn hủy?"; }
+        if (isAccepted) {
+            confirmationMsg = "Tài xế đã nhận cuốc. Bạn chắc chắn muốn hủy?";
+        }
 
         if (!confirm(confirmationMsg)) return;
 
