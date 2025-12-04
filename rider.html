@@ -117,12 +117,14 @@
   <label>Điểm đón</label>
   <div class="suggestions-container">
     <input id="from" placeholder="Ví dụ: 1 Phố A, Quận B" />
-    <div id="fromSuggestions" class="suggestions-list"></div> </div>
+    <div id="fromSuggestions" class="suggestions-list"></div> 
+  </div>
 
   <label>Điểm đến</label>
   <div class="suggestions-container">
     <input id="to" placeholder="Ví dụ: 2 Phố X, Quận Y" />
-    <div id="toSuggestions" class="suggestions-list"></div> </div>
+    <div id="toSuggestions" class="suggestions-list"></div> 
+  </div>
 
   <label>Chọn loại xe</label>
   <select id="vehicle">
@@ -166,7 +168,7 @@
       authDomain: "robotkitkat6-bee.firebaseapp.com",
       databaseURL: "https://robotkitkat6-bee-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "robotkitkat6-bee",
-      storageBucket: "robotkitkat6-bee.firebase-storage.app",
+      storageBucket: "robotkitkat6-bee.firebasestorage.app",
       messagingSenderId: "117130770804",
       appId: "1:117130770804:web:4827cc61a7c9df99549421",
       measurementId: "G-WMKP4GT930"
@@ -243,7 +245,8 @@
 
     // --- CHỨC NĂNG GEOCODING (TÌM KIẾM ĐỊA CHỈ) ---
     async function geocode(q) {
-      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=1&countrycodes=vn';
+      // Đã sửa: Bỏ countrycodes=vn để tìm kiếm được nhiều kết quả hơn
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=1';
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
       const arr = await res.json();
       if (!arr || !arr.length) throw new Error('Không tìm thấy địa điểm: ' + q);
@@ -255,7 +258,8 @@
         targetList.innerHTML = '';
         if (query.length < 3) return;
 
-        const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5&countrycodes=vn';
+        // Đã sửa: Bỏ countrycodes=vn để tìm kiếm được nhiều kết quả hơn
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5';
         try {
             const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
             const arr = await res.json();
@@ -271,8 +275,6 @@
                     };
                     targetList.appendChild(div);
                 });
-            } else {
-                 // Không làm gì nếu không có gợi ý, để trống list
             }
         } catch (e) {
             console.error("Lỗi tìm kiếm gợi ý:", e);
@@ -291,11 +293,9 @@
     });
     // --- KẾT THÚC CHỨC NĂNG GEOCODING ---
 
-    // ... (Giữ nguyên các hàm khác) ...
-
     // Reverse Geocode via Nominatim
     async function reverseGeocode(lat, lng) {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&countrycodes=vn`; // Giữ countrycodes cho Reverse Geocode
       const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
       const data = await res.json();
       if (data && data.display_name) {
@@ -331,7 +331,7 @@
                 riderCurrentPos.display = addressText;
                 // Đề xuất địa chỉ (tự động điền)
                 document.getElementById('from').value = addressText; 
-                infoDiv.innerHTML = `<div style="color:var(--success-color);">Đã tìm thấy vị trí hiện tại: ${addressText.split(',').slice(0, 2).join(',')}</div>`;
+                infoDiv.innerHTML = `<div style="color:var(--success-color);">✅ Đã tìm thấy vị trí hiện tại: ${addressText.split(',').slice(0, 2).join(',')}</div>`;
             } catch (e) {
                 console.error("Lỗi reverse geocode:", e);
                 document.getElementById('from').value = `(${lat.toFixed(6)}, ${lng.toFixed(6)})`;
@@ -339,7 +339,12 @@
 
         }, (err) => {
             console.warn(`Lỗi định vị: ${err.code} - ${err.message}`);
-            infoDiv.innerHTML = `<div style="color:var(--danger-color);">Không lấy được vị trí hiện tại. Vui lòng nhập địa chỉ.</div>`;
+            // Đã sửa: Cải thiện thông báo lỗi định vị
+            infoDiv.innerHTML = `<div style="color:var(--danger-color);">
+                ❌ **Lỗi định vị:** Không lấy được vị trí hiện tại (${err.code}).
+                Vui lòng kiểm tra đã cấp quyền **Vị trí** cho trình duyệt (thường ở góc trên bên trái thanh địa chỉ).
+                Vẫn có thể nhập địa chỉ thủ công.
+            </div>`;
         }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
     }
 
@@ -357,11 +362,10 @@
         draggableWaypoints: false,
         fitSelectedRoutes: true,
         showAlternatives: false,
-        // Dùng marker mặc định để phân biệt rõ ràng
         createMarker: function(i, wp, n) {
             let iconUrl = (i === 0) ? 
-                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png' : // Điểm đón (FROM)
-                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png'; // Điểm đến (TO)
+                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png' : 
+                'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png'; 
             
             return L.marker(wp.latLng, { 
                 draggable: false, 
@@ -380,7 +384,7 @@
         displayInfo();
         requestBtn.disabled = false;
       });
-      // Bắt lỗi khi không tìm thấy tuyến đường (thường do lỗi OSRM/Geocoding)
+      // Bắt lỗi khi không tìm thấy tuyến đường 
       routingControl.on('routingerror', function(e) {
         alert('Lỗi tìm tuyến đường: Không thể kết nối các điểm đã chọn.');
         requestBtn.disabled = true;
@@ -406,7 +410,7 @@
       `;
     }
 
-    // === HÀM CẬP NHẬT TRẠNG THÁI CUỐC XE (Giữ nguyên) ===
+    // === HÀM CẬP NHẬT TRẠNG THÁI CUỐC XE ===
     function updateRideStatusUI(ride) {
         if (!rideStatusOverlay.style.display || rideStatusOverlay.style.display === 'none') {
             rideStatusOverlay.style.display = 'block';
@@ -487,7 +491,7 @@
         }
     }
     
-    // === HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE (Giữ nguyên) ===
+    // === HÀM LẮNG NGHE TRẠNG THÁI CUỐC XE ===
     function listenToRide(rideId) {
         currentRideId = rideId;
         const rideRef = ref(db, 'rides/' + rideId);
@@ -526,7 +530,7 @@
         cancelRideBtn.onclick = () => cancelRide(rideId);
     }
     
-    // === HÀM HỦY CUỐC XE (Giữ nguyên) ===
+    // === HÀM HỦY CUỐC XE ===
     async function cancelRide(rideId) {
         if (!confirm("Bạn chắc chắn muốn hủy cuốc xe này?")) return;
         try {
@@ -554,7 +558,6 @@
         estimateBtn.disabled = true;
         infoDiv.innerHTML = 'Đang tìm địa chỉ...';
         
-        // --- CHỖ NÀY CÓ THỂ LÀM NÚT ESTIMATE BÁO LỖI NẾU KHÔNG CÓ KẾT QUẢ ---
         const fromCoords = await geocode(from);
         const toCoords = await geocode(to);
         
