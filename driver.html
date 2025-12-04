@@ -11,20 +11,26 @@
   <div class="map-page-container">
     <div id="map"></div>
     
-    <div id="statusControl" class="overlay-card" style="top: 20px; bottom: auto; padding: 10px 15px;">
-        <h2 style="margin:0; padding: 0; font-size: 1.2em; border: none;">Trạng thái tài xế</h2>
+    <div id="statusControl" class="overlay-card">
+        <h2>Thiết lập Tài xế</h2>
+        
+        <div id="driverNameInput">
+            <label>Tên & Biển số xe</label>
+            <input id="driverName" placeholder="Ví dụ: Nam Hải - 29L1-33254"/>
+        </div>
+
         <div id="driverInfo" style="font-weight: bold; margin-bottom: 10px;">Chưa online</div>
-        <input id="driverName" placeholder="Tên tài xế (Ví dụ: Tài xế A)"/>
+        
         <div class="row" style="margin-top: 5px;">
-            <button id="goOnline" class="btn btn-primary col">Bật Online</button>
+            <button id="goOnline" class="btn btn-success col">Bật Online</button>
             <button id="goOffline" class="btn btn-danger col" style="display:none">Tắt Online</button>
         </div>
     </div>
 
-    <div id="activeRideOverlay" class="overlay-card" style="display:none; transition: all 0.3s ease-in-out;">
+    <div id="activeRideOverlay" class="overlay-card" style="display:none; transition: all 0.3s ease-in-out; bottom: 15px;">
         </div>
 
-    <div id="newRidesList" style="position: absolute; top: 20px; right: 15px; z-index: 20; max-height: 50vh; overflow-y: auto;">
+    <div id="newRidesList" style="position: absolute; top: 15px; right: 15px; z-index: 20; max-height: 50vh; overflow-y: auto;">
         </div>
   </div>
 
@@ -73,18 +79,30 @@
     let online = false;
     let watchId = null;
 
-    // SỬA: requestsDiv đổi thành newRidesList cho cuốc mới
     const newRidesList = document.getElementById('newRidesList'); 
     const activeRideOverlay = document.getElementById('activeRideOverlay'); 
     const statusControl = document.getElementById('statusControl');
+    const driverNameInput = document.getElementById('driverName');
 
-    let shownRides = {}; // rideId -> { el, routeControl, accepted: bool }
+    let shownRides = {}; 
 
-    // Constants for localStorage (Giữ nguyên)
     const STORAGE_KEY_STATUS = 'driverOnlineStatus';
     const STORAGE_KEY_NAME = 'driverName';
 
-    // === HÀM LƯU/TẢI TRẠNG THÁI (PERSISTENCE) === (Giữ nguyên)
+    // === HÀM PHÁT ÂM THANH VÀ RUNG ===
+    function notifyNewRide() {
+        if (navigator.vibrate) {
+            navigator.vibrate([500, 250, 500]); // Rung 2 lần
+        }
+        try {
+            const audio = new Audio('https://www.soundjay.com/buttons/beep-07a.mp3'); // Âm thanh nhẹ nhàng
+            audio.play();
+        } catch (e) {
+            console.warn('Không thể phát âm thanh:', e);
+        }
+    }
+    // ===========================================
+
     function saveDriverState(isOnline, name) {
         localStorage.setItem(STORAGE_KEY_STATUS, isOnline ? 'online' : 'offline');
         localStorage.setItem(STORAGE_KEY_NAME, name);
@@ -93,40 +111,42 @@
     function loadDriverState() {
         const savedName = localStorage.getItem(STORAGE_KEY_NAME);
         if (savedName) {
-            document.getElementById('driverName').value = savedName;
+            driverNameInput.value = savedName;
         }
         const savedStatus = localStorage.getItem(STORAGE_KEY_STATUS);
         if (savedStatus === 'online') {
             document.getElementById('goOnline').click();
         }
     }
-    // ===========================================
 
-    // Helpers for DB (Giữ nguyên)
     const driversRef = ref(db, 'drivers');
     const ridesRef = ref(db, 'rides');
 
+    // SỬA: Cập nhật giao diện sau khi Online
     async function setDriverOnline(name, lat, lng) {
       const dRef = ref(db, 'drivers/' + DRIVER_ID);
       await set(dRef, { id: DRIVER_ID, name, lat, lng, online: true, updatedAt: Date.now() });
-      document.getElementById('driverInfo').innerText = 'Online như: ' + name;
-      // Ẩn control/hiển thị map
-      statusControl.style.top = '20px';
-      statusControl.style.left = 'auto';
-      statusControl.style.right = '15px';
-      statusControl.style.width = '200px'; 
+      
+      // Cập nhật giao diện (nhỏ lại)
+      statusControl.classList.add('small');
+      document.getElementById('driverInfo').innerText = `${name} | 🟢 Online`;
+      document.getElementById('goOnline').style.display = 'none';
+      document.getElementById('goOffline').style.display = 'inline-block';
+      document.getElementById('driverNameInput').style.display = 'none'; 
     }
+    
     async function setDriverOffline() {
       const dRef = ref(db, 'drivers/' + DRIVER_ID);
       await remove(dRef).catch(()=>{});
+
+      // Cập nhật giao diện (trở lại lớn)
+      statusControl.classList.remove('small');
       document.getElementById('driverInfo').innerText = 'Bạn đã offline';
-      // Hiển thị control to hơn
-      statusControl.style.top = '20px';
-      statusControl.style.left = '15px';
-      statusControl.style.right = '15px';
-      statusControl.style.width = 'auto';
+      document.getElementById('goOnline').style.display = 'inline-block';
+      document.getElementById('goOffline').style.display = 'none';
+      document.getElementById('driverNameInput').style.display = 'block';
     }
-    //... (Giữ nguyên updateDriverLocation, startWatch, stopWatch) ...
+    
     async function updateDriverLocation(lat, lng) {
         lastPos = { lat, lng };
         driverMarker.setLatLng([lat,lng]);
@@ -134,15 +154,11 @@
         const dRef = ref(db, 'drivers/' + DRIVER_ID);
         await update(dRef, { lat, lng, updatedAt: Date.now() }).catch(()=>{});
         
-        // CẬP NHẬT VỊ TRÍ TÀI XẾ CHO CUỐC XE ĐANG CHẠY
         Object.keys(shownRides).forEach(rideId => {
             const s = shownRides[rideId];
-            if (s.accepted) { // Chỉ cập nhật cho cuốc đã nhận
+            if (s.accepted) { 
                 const rideRef = ref(db, 'rides/' + rideId);
-                update(rideRef, {
-                    driverLat: lat,
-                    driverLng: lng
-                });
+                update(rideRef, { driverLat: lat, driverLng: lng });
                 if (s.routeControl) {
                     const waypoints = s.routeControl.getWaypoints();
                     if (waypoints.length > 0) {
@@ -166,7 +182,7 @@
     }
     function stopWatch() { if (watchId) navigator.geolocation.clearWatch(watchId); watchId = null; }
 
-    // FETCH RIDES (Giữ nguyên logic lắng nghe)
+    // FETCH RIDES 
     onChildAdded(ridesRef, (snap) => {
       const ride = snap.val(); const rideId = snap.key;
       if (!online || !ride) return;
@@ -195,28 +211,28 @@
         const isAcceptedByMe = (rideObj.driverId === DRIVER_ID && (rideObj.status === 'accepted' || rideObj.status === 'onTrip'));
         
         if (isFindingAndNear) {
-            // Cuốc mới đến, hiển thị ở newRidesList
+            // Cuốc mới đến
             if (!shownRides[rideId]) {
                 createRideUI(rideId, rideObj, d);
+                notifyNewRide(); // PHÁT ÂM THANH & RUNG
             }
             updateRideUI(rideId, rideObj, d);
         } else if (isAcceptedByMe) {
-            // Cuốc đã nhận, hiển thị ở activeRideOverlay và ẩn khỏi newRidesList
+            // Cuốc đã nhận
             if (!shownRides[rideId]) {
-                createRideUI(rideId, rideObj, d, true); // Tạo UI ngay trong overlay
+                createRideUI(rideId, rideObj, d, true); 
             }
             updateRideUI(rideId, rideObj, d);
-            // Ẩn các cuốc mới khác nếu có cuốc đang chạy
-            newRidesList.style.display = 'none';
+            newRidesList.style.display = 'none'; // Ẩn danh sách cuốc mới
         } else {
             removeRideFromUI(rideId);
         }
     }
 
-    // SỬA: Tách logic tạo UI cho cuốc mới và cuốc đang chạy
+    // SỬA: Dùng class mới cho cuốc mới (new-request-card)
     function createRideUI(rideId, rideObj, distKm, isActive = false) {
       const el = document.createElement('div');
-      el.className = isActive ? 'active-request' : 'request';
+      el.className = isActive ? 'active-request' : 'new-request-card';
       el.id = 'ride_' + rideId;
       
       el.dataset.fromLat = rideObj.from.lat; 
@@ -227,11 +243,19 @@
       const pickup = `${rideObj.fromText || '—'}`;
       const dest = `${rideObj.toText || '—'}`;
       el.innerHTML = `
-        <h3 style="margin-top: 0; font-size: 1.1em; color: var(--primary-color);">Cuốc xe #${rideId.slice(-4)}</h3>
-        <div class="distance-info" style="font-weight: bold;">Cách bạn: ${distKm.toFixed(2)} km</div>
-        <div style="margin: 5px 0;">Đón: ${pickup}</div>
-        <div style="margin: 5px 0;">Đến: ${dest}</div>
-        <div style="margin: 5px 0;">Giá: <b>${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}</b> (${rideObj.vehicle === 'bike' ? 'Xe máy' : 'Ô tô'})</div>
+        <h3>Cuốc xe #${rideId.slice(-4)} (${rideObj.vehicle === 'bike' ? 'Xe máy' : 'Ô tô'})</h3>
+        <div class="distance-info">
+            <span style="color: #6c757d;">Cách bạn: </span>${distKm.toFixed(2)} km
+        </div>
+        <div style="margin: 5px 0; font-size: 0.9em;">
+            <span style="color: #adb5bd;">Đón:</span> ${pickup.split(',').slice(0, 2).join(',')}
+        </div>
+        <div style="margin: 5px 0; font-size: 0.9em;">
+            <span style="color: #adb5bd;">Đến:</span> ${dest.split(',').slice(0, 2).join(',')}
+        </div>
+        <div style="margin: 5px 0; font-size: 1.1em; font-weight: bold; color: #ffc107;">
+            Giá: ${rideObj.fare ? rideObj.fare.toLocaleString() + ' đ' : '—'}
+        </div>
         <div class="row request-actions" style="margin-top: 10px;"></div>
       `;
       
@@ -253,26 +277,26 @@
       if (s.el) s.el.remove();
       delete shownRides[rideId];
       
-      // Ẩn Overlay nếu không còn cuốc nào
       if (activeRideOverlay.children.length === 0) {
           activeRideOverlay.style.display = 'none';
-          newRidesList.style.display = 'block'; // Hiện lại danh sách cuốc mới nếu có
+          newRidesList.style.display = 'block'; 
+      }
+      if (newRidesList.children.length === 0) {
+          newRidesList.style.display = 'none';
       }
     }
 
-    // HÀM CẬP NHẬT GIAO DIỆN VÀ NÚT BẤM (ĐÃ SỬA LỖI THIẾU NÚT NHẬN CUỐC)
     function updateRideUI(rideId, rideObj, distKm) {
         const s = shownRides[rideId];
         if (!s) return; 
 
         const distEl = s.el.querySelector('.distance-info');
-        if (distEl) distEl.innerHTML = `Cách bạn: ${distKm.toFixed(2)} km`;
+        if (distEl) distEl.innerHTML = `<span style="color: #6c757d;">Cách bạn: </span>${distKm.toFixed(2)} km`;
         
         const actionsDiv = s.el.querySelector('.request-actions');
         
-        // --- LOGIC HIỂN THỊ NÚT CHO CUỐC ĐANG TÌM KIẾM (finding) ---
+        // --- LOGIC CUỐC MỚI (finding) ---
         if (rideObj.status === 'finding' && !s.accepted) {
-            // Đảm bảo nó hiển thị trong newRidesList (nếu có)
             if (s.el.parentElement.id !== 'newRidesList') {
                 removeRideFromUI(rideId);
                 createRideUI(rideId, rideObj, distKm, false);
@@ -290,14 +314,13 @@
             return;
         } 
         
-        // --- LOGIC HIỂN THỊ NÚT CHO CUỐC ĐÃ NHẬN (accepted/onTrip) ---
+        // --- LOGIC CUỐC ĐÃ NHẬN (accepted/onTrip) ---
         if (rideObj.driverId === DRIVER_ID && (rideObj.status === 'accepted' || rideObj.status === 'onTrip')) {
-            // Đảm bảo nó được chuyển sang activeRideOverlay
             if (s.el.parentElement.id !== 'activeRideOverlay') {
                  s.el.remove();
                  createRideUI(rideId, rideObj, distKm, true);
-                 const newS = shownRides[rideId]; // Lấy lại object mới
-                 newS.currentStatus = ''; // Buộc cập nhật
+                 const newS = shownRides[rideId]; 
+                 newS.currentStatus = ''; 
                  updateRideUI(rideId, rideObj, distKm);
                  return;
             }
@@ -361,21 +384,18 @@
                 lineOptions: { styles: [{ color: '#007bff', weight: 6, opacity: 0.7 }] } 
             }).addTo(map);
 
-             // Tùy chỉnh map view để hiển thị toàn bộ route (nếu có)
              if (s.routeControl && s.routeControl.getPlan() && s.routeControl.getPlan().setWaypoints) {
-                s.routeControl.route(); // Yêu cầu vẽ lại route
+                s.routeControl.route(); 
              }
         }
     }
+    
     // ... (Giữ nguyên các hàm startTrip, cancelRide, acceptRide, completeRide) ...
     async function startTrip(rideId, el) {
         if (!confirm("Xác nhận bạn đã đón khách và bắt đầu hành trình đến điểm đến?")) return;
         try {
             const rideRef = ref(db, 'rides/' + rideId);
-            await update(rideRef, {
-                status: 'onTrip', 
-                startedTripAt: Date.now()
-            });
+            await update(rideRef, { status: 'onTrip', startedTripAt: Date.now() });
         } catch (e) { alert('Lỗi khi bắt đầu hành trình: ' + (e.message || e)); }
     }
     async function cancelRide(rideId, el) {
@@ -394,7 +414,7 @@
         if (!current) { alert('Cuốc đã bị hủy'); removeRideFromUI(rideId); return; }
         if (current.status && current.status !== 'finding') { alert('Cuốc đã được nhận bởi người khác'); removeRideFromUI(rideId); return; }
 
-        const driverName = document.getElementById('driverName').value || ('Tài xế_' + DRIVER_ID.slice(-4));
+        const driverName = driverNameInput.value || ('Tài xế_' + DRIVER_ID.slice(-4));
         await update(rideRef, {
           status: 'accepted',
           driverId: DRIVER_ID,
@@ -426,10 +446,12 @@
     
     // --- BUTTON HANDLERS ---
     document.getElementById('goOnline').addEventListener('click', async () => {
-      const name = document.getElementById('driverName').value || ('Tài xế_' + DRIVER_ID.slice(-4));
+      const name = driverNameInput.value || ('Tài xế_' + DRIVER_ID.slice(-4));
+      if (name.length < 5) {
+          alert("Vui lòng nhập Tên và Biển số xe để Online.");
+          return;
+      }
       online = true;
-      document.getElementById('goOnline').style.display = 'none';
-      document.getElementById('goOffline').style.display = 'inline-block';
       document.getElementById('driverInfo').innerText = 'Kết nối...';
       startWatch();
       
@@ -438,10 +460,8 @@
       setTimeout(async () => {
         if (!lastPos) {
           alert('Không lấy được vị trí — kiểm tra quyền truy cập vị trí');
-          document.getElementById('goOnline').style.display = 'inline-block';
-          document.getElementById('goOffline').style.display = 'none';
-          document.getElementById('driverInfo').innerText = 'Lỗi kết nối vị trí';
           online = false;
+          setDriverOffline(); // Tự động về Offline và reset UI
           saveDriverState(false, name);
           return;
         }
@@ -451,14 +471,12 @@
 
     document.getElementById('goOffline').addEventListener('click', async () => {
       online = false;
-      document.getElementById('goOnline').style.display = 'inline-block';
-      document.getElementById('goOffline').style.display = 'none';
       stopWatch();
       await setDriverOffline();
       newRidesList.innerHTML = '';
       activeRideOverlay.style.display = 'none';
       shownRides = {};
-      saveDriverState(false, document.getElementById('driverName').value);
+      saveDriverState(false, driverNameInput.value);
     });
 
     window.addEventListener('beforeunload', async () => {
